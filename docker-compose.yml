@@ -1,6 +1,5 @@
 services:
   app:
     image: ghcr.io/martin-obert/warehouse:latest
-    build: .
     ports:
       - "3000:3000"

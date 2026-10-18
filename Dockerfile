@@ -1,4 +1,4 @@
-ARG BUILDPLATFORM
+# syntax=docker/dockerfile:1
 FROM --platform=${BUILDPLATFORM:-linux/amd64} node:22-alpine AS build
 
 WORKDIR /app
