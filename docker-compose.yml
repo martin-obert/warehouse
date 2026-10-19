@@ -3,3 +3,7 @@ services:
     image: ghcr.io/martin-obert/warehouse:latest
     ports:
       - "3000:3000"
+    volumes:
+      - /mnt/hdd/some_vol:/data
+    environment:
+      - NUXT_CONTENT_ROOT=/data
