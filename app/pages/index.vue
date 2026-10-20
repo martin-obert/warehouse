@@ -48,6 +48,14 @@ const columns: TableColumn<FileRow>[] = [
 ]
 
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / pageSize))
+
+const previewOpen = ref(false)
+const previewFile = ref<FileRow | null>(null)
+
+function openPreview(row: FileRow) {
+  previewFile.value = row
+  previewOpen.value = true
+}
 </script>
 
 <template>
@@ -68,13 +76,14 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / pageSize)
           :columns="columns"
           :loading="status === 'pending'"
           sticky
+          @select="(_e: Event, row: any) => openPreview(row.original)"
         >
           <template #thumbnail-cell="{ row }">
             <img
               v-if="row.original.kind === 'image'"
               :src="`/api/files/${row.original.id}/thumbnail`"
               :alt="row.original.path"
-              class="w-10 h-10 object-cover rounded"
+              class="w-10 h-10 object-cover rounded cursor-pointer"
               loading="lazy"
             >
             <div v-else class="w-10 h-10 rounded bg-(--ui-bg-accented) flex items-center justify-center">
@@ -99,5 +108,50 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / pageSize)
         </template>
       </UCard>
     </main>
+
+    <UModal v-model:open="previewOpen">
+      <template #content>
+        <div v-if="previewFile" class="p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-(--ui-text-highlighted) truncate">
+              {{ previewFile.path }}
+            </h2>
+            <UButton
+              icon="i-lucide-x"
+              variant="ghost"
+              color="neutral"
+              @click="previewOpen = false"
+            />
+          </div>
+
+          <div v-if="previewFile.kind === 'image'" class="flex justify-center bg-(--ui-bg-accented) rounded-lg p-2">
+            <img
+              :src="`/api/files/${previewFile.id}/preview`"
+              :alt="previewFile.path"
+              class="max-h-[70vh] max-w-full object-contain rounded"
+            >
+          </div>
+          <div v-else class="flex flex-col items-center justify-center py-12 text-(--ui-text-muted)">
+            <UIcon name="i-lucide-file" class="text-4xl mb-2" />
+            <p>No preview available</p>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
+            <div class="text-(--ui-text-muted)">Kind</div>
+            <div>{{ previewFile.kind }}</div>
+            <div class="text-(--ui-text-muted)">MIME</div>
+            <div>{{ previewFile.mime }}</div>
+            <div class="text-(--ui-text-muted)">Size</div>
+            <div>{{ humanSize(previewFile.size) }}</div>
+            <div class="text-(--ui-text-muted)">Modified</div>
+            <div>{{ formatDate(previewFile.modifiedAt) }}</div>
+            <template v-if="previewFile.title">
+              <div class="text-(--ui-text-muted)">Title</div>
+              <div>{{ previewFile.title }}</div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
