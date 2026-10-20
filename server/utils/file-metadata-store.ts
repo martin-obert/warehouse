@@ -144,6 +144,36 @@ export async function searchFiles({ q, kind, limit = 50, offset = 0 }: FileSearc
     return (await useDatabase().prepare(sql).all(...params)) as FileSearchHit[]
 }
 
+export interface FileListRow {
+    id: number
+    path: string
+    kind: FileKind
+    mime: string
+    size: number
+    modifiedAt: string
+    title: string | null
+}
+
+export interface FileListResult {
+    rows: FileListRow[]
+    total: number
+}
+
+export async function listFiles({ page = 1, pageSize = 20 }: { page?: number; pageSize?: number } = {}): Promise<FileListResult> {
+    const db = useDatabase()
+    const limit = Math.max(1, Math.min(pageSize, 200))
+    const offset = (Math.max(1, page) - 1) * limit
+
+    const [rows, countRow] = await Promise.all([
+        db.prepare(
+            'SELECT id, path, kind, mime, size, modified_at AS modifiedAt, title FROM files ORDER BY modified_at DESC LIMIT ? OFFSET ?',
+        ).all(limit, offset) as Promise<FileListRow[]>,
+        db.prepare('SELECT COUNT(*) AS total FROM files').get() as Promise<{ total: number }>,
+    ])
+
+    return { rows, total: countRow.total }
+}
+
 /** Exact duplicates by content hash (deep-mode records only). */
 export async function findDuplicates(sha256: string): Promise<string[]> {
     const rows = (await useDatabase().prepare(
