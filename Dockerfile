@@ -4,12 +4,12 @@ FROM --platform=${BUILDPLATFORM:-linux/amd64} node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --network-timeout=120000
 
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine
+FROM --platform=${TARGETPLATFORM:-linux/amd64} node:22-alpine
 
 WORKDIR /app
 
