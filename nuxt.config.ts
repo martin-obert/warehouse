@@ -4,7 +4,11 @@ export default defineNuxtConfig({
     devtools: {enabled: true},
     nitro: {
         experimental: {
-            tasks: true
+            tasks: true,
+            database: true
+        },
+        database: {
+            default: {connector: 'sqlite', options: {name: 'app'}} // .data/app.sqlite3
         }
     },
     runtimeConfig: {
