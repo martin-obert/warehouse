@@ -38,6 +38,7 @@ function formatDate(iso: string): string {
 }
 
 const columns: TableColumn<FileRow>[] = [
+  { id: 'thumbnail', header: '' },
   { accessorKey: 'path', header: 'Path' },
   { accessorKey: 'kind', header: 'Kind' },
   { accessorKey: 'mime', header: 'MIME' },
@@ -67,7 +68,20 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / pageSize)
           :columns="columns"
           :loading="status === 'pending'"
           sticky
-        />
+        >
+          <template #thumbnail-cell="{ row }">
+            <img
+              v-if="row.original.kind === 'image'"
+              :src="`/api/files/${row.original.id}/thumbnail`"
+              :alt="row.original.path"
+              class="w-10 h-10 object-cover rounded"
+              loading="lazy"
+            >
+            <div v-else class="w-10 h-10 rounded bg-(--ui-bg-accented) flex items-center justify-center">
+              <UIcon name="i-lucide-file" class="text-(--ui-text-muted)" />
+            </div>
+          </template>
+        </UTable>
 
         <template #footer>
           <div class="flex items-center justify-between">

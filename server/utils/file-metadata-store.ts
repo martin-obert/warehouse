@@ -174,6 +174,22 @@ export async function listFiles({ page = 1, pageSize = 20 }: { page?: number; pa
     return { rows, total: countRow.total }
 }
 
+export function saveThumbnail(fileId: number, thumb: { data: Buffer; width: number; height: number }): Promise<void> {
+    return withWriteLock(async () => {
+        await useDatabase().prepare(`
+            INSERT INTO file_thumbnails (file_id, data, width, height) VALUES (?, ?, ?, ?)
+            ON CONFLICT(file_id) DO UPDATE SET data = excluded.data, width = excluded.width, height = excluded.height
+        `).run(fileId, thumb.data, thumb.width, thumb.height)
+    })
+}
+
+export async function getThumbnail(fileId: number): Promise<Buffer | null> {
+    const row = (await useDatabase().prepare(
+        'SELECT data FROM file_thumbnails WHERE file_id = ?',
+    ).get(fileId)) as { data: Buffer } | undefined
+    return row?.data ?? null
+}
+
 /** Exact duplicates by content hash (deep-mode records only). */
 export async function findDuplicates(sha256: string): Promise<string[]> {
     const rows = (await useDatabase().prepare(
