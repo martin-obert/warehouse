@@ -48,7 +48,7 @@ export default defineNitroPlugin((nitroApp) => {
             } catch (err) {
                 console.error('[file-indexer]', err)
             }
-            await new Promise((r) => setTimeout(r, 50))
+            await new Promise((r) => setTimeout(r, 250))
         }
     }
 
