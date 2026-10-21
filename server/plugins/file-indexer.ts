@@ -24,13 +24,13 @@ export default defineNitroPlugin((nitroApp) => {
     async function run() {
         await createDatabase()
 
-        const {contentRoot} = useRuntimeConfig()
+        const {contentRoot, forceReindex} = useRuntimeConfig()
 
         if (!contentRoot) {
             throw new Error('NUXT_CONTENT_ROOT is required')
         }
 
-
+        if (forceReindex) console.log('NUXT_FORCE_REINDEX is set — skipping freshness checks, re-extracting all files.')
         console.log(`Crawling ${contentRoot} for media files...`)
 
         try {
@@ -38,8 +38,10 @@ export default defineNitroPlugin((nitroApp) => {
             for await (const filePath of walkDir(contentRoot)) {
                 const displayPath = relative(contentRoot, filePath).replaceAll('\\', '/')
 
-                const st = await stat(filePath, {bigint: true})
-                if (await isStoredMetadataFresh(displayPath, st, {requireDeep: true})) continue
+                if (!forceReindex) {
+                    const st = await stat(filePath, {bigint: true})
+                    if (await isStoredMetadataFresh(displayPath, st, {requireDeep: true})) continue
+                }
 
                 const fileMetadata = await extractFileMetadata({absolutePath: filePath, displayPath}, {deep: true})
                 console.log('Saving file ' + fileMetadata.path.display)
