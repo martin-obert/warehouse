@@ -159,19 +159,38 @@ export interface FileListResult {
     total: number
 }
 
-export async function listFiles({ page = 1, pageSize = 20 }: { page?: number; pageSize?: number } = {}): Promise<FileListResult> {
+export async function listFiles({ page = 1, pageSize = 20, directory }: { page?: number; pageSize?: number; directory?: string } = {}): Promise<FileListResult> {
     const db = useDatabase()
     const limit = Math.max(1, Math.min(pageSize, 200))
     const offset = (Math.max(1, page) - 1) * limit
 
     const [rows, countRow] = await Promise.all([
         db.prepare(
-            'SELECT id, path, kind, mime, size, modified_at AS modifiedAt, title FROM files ORDER BY modified_at DESC LIMIT ? OFFSET ?',
-        ).all(limit, offset) as Promise<FileListRow[]>,
-        db.prepare('SELECT COUNT(*) AS total FROM files').get() as Promise<{ total: number }>,
+            `SELECT id, path, kind, mime, size, modified_at AS modifiedAt, title FROM files
+             WHERE directory = ? ORDER BY modified_at DESC LIMIT ? OFFSET ?`,
+        ).all(directory ?? '', limit, offset) as Promise<FileListRow[]>,
+        db.prepare('SELECT COUNT(*) AS total FROM files WHERE directory = ?').get(directory ?? '') as Promise<{ total: number }>,
     ])
 
     return { rows, total: countRow.total }
+}
+
+/** Immediate child folder names under `parent` ('' for the content root), alphabetically sorted. */
+export async function listChildFolders(parent: string): Promise<string[]> {
+    const rows = (await useDatabase().prepare(
+        parent
+            ? `SELECT DISTINCT directory FROM files WHERE directory = ? OR directory LIKE ? || '/%'`
+            : `SELECT DISTINCT directory FROM files WHERE directory != ''`,
+    ).all(...(parent ? [parent, parent] : []))) as { directory: string }[]
+
+    const children = new Set<string>()
+    for (const { directory } of rows) {
+        if (directory === parent) continue
+        const rest = parent ? directory.slice(parent.length + 1) : directory
+        const slash = rest.indexOf('/')
+        children.add(slash === -1 ? rest : rest.slice(0, slash))
+    }
+    return [...children].sort()
 }
 
 export function saveThumbnail(fileId: number, thumb: { data: Buffer; width: number; height: number }): Promise<void> {

@@ -177,3 +177,32 @@ Rules:
   tokens.
 - **Consequences:** Don't introduce card-heavy layouts, large whitespace, or decorative visual
   elements in browsing-shell UI without revisiting this decision first.
+
+## D015 — Folder tree nodes own their own lazy-loaded state (exception to D011)
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Implementing the Phase 2 sidebar (`app/components/files/FolderTreeNode.vue`,
+  `Sidebar.vue`). D011 says composables own fetching/state and components stay presentational —
+  but a folder tree is recursive and each node's children are only known/loaded on first expand;
+  there's no single flat list a shared composable could sensibly own ahead of time.
+- **Decision:** `FolderTreeNode` is a self-referencing recursive component that owns its own
+  `expanded`/`children` state locally and lazy-fetches `/api/folders?path=...` via `$fetch` on
+  first expand. `Sidebar` similarly fetches the root level itself via `useFetch` on mount.
+- **Consequences:** This is a deliberate, scoped exception to D011 for recursive/lazy tree
+  structures specifically — don't use it as precedent for giving other (non-recursive) components
+  their own fetch/state; the Phase 1 convention still applies everywhere else.
+
+## D016 — Current folder lives in a `?path=` query param, not a catch-all route
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** `docs/DESIGN.md`'s implementation note for Phase 2 required the current folder to
+  be reflected in the URL (linkable/bookmarkable, survives refresh), without mandating a specific
+  routing mechanism. Alternative considered: a catch-all route (`app/pages/[...path].vue`) giving
+  prettier URLs (`/Photos/2026/Oct` vs `/?path=Photos%2F2026%2FOct`).
+- **Decision:** A `?path=` query param on the existing `/` route, read/written through
+  `app/composables/useCurrentFolder.ts`. Matches the existing precedent of query-param-driven
+  state in this app (pagination's `page` param) and avoids catch-all splat-param array handling.
+- **Consequences:** URLs are less pretty than a path-based route. If that becomes a real complaint,
+  revisit this decision rather than mixing both schemes.

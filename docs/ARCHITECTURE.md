@@ -55,17 +55,23 @@ index time. Full-size previews are generated separately, on demand (see §4).
 ## 3. Data model
 
 SQLite, schema version gated by `PRAGMA user_version` against a `SCHEMA_VERSION` constant in
-`server/plugins/file-indexer.ts` (currently `2`). No migration library — schema changes are one
-hand-written SQL block, applied once.
+`server/plugins/file-indexer.ts` (currently `3`). No migration library — schema changes are one
+hand-written SQL block, applied once. Because the block uses plain `CREATE TABLE` (no `IF NOT
+EXISTS`), bumping `SCHEMA_VERSION` against an existing lower-versioned database errors rather than
+migrating it in place — see D009 in `docs/DECISIONS.md`. In practice this is harmless in
+production (the DB isn't volume-mounted, so every deploy already starts from an empty file — see
+`docs/ROADMAP.md` known gaps), but a local dev `.data/app.sqlite3` must be deleted by hand after a
+schema bump so the indexer can rebuild it.
 
 - **`files`** — one row per file. `meta` is the entire `FileMetadata` object (minus large embedded
   documents) as a JSONB blob; every other column is `GENERATED ALWAYS AS (meta ->> '$...')
   VIRTUAL`:
   `kind`, `mime`, `size`, `modified_at`, `created_at`, `sha256`, `phash`, `lat`, `lon`, `deep`,
-  `fs_mtime_ns`, `fs_inode` (staleness detection), `title`, `author`, `description`, `keywords`,
-  `location`, `extra` (camera/lens/software), `body` (PDF text excerpt).
+  `directory` (file's parent folder, `''` for files at the content root — powers Phase 2 folder
+  browsing), `fs_mtime_ns`, `fs_inode` (staleness detection), `title`, `author`, `description`,
+  `keywords`, `location`, `extra` (camera/lens/software), `body` (PDF text excerpt).
   Indexes: `(kind, modified_at DESC)`, `(modified_at DESC)`, `(sha256)` where not null, `(lat,
-  lon)` where not null.
+  lon)` where not null, `(directory)`.
 - **`file_embedded_docs`** — large deep-mode embedded documents (e.g. timed GPS/sensor tracks),
   split out of the hot `files` row; one row per file, loaded only for detail views.
 - **`file_thumbnails`** — `file_id`, `data` (WebP blob), `width`, `height`.
@@ -74,26 +80,27 @@ hand-written SQL block, applied once.
   extra, body`, kept in sync with `files` via `AFTER INSERT/DELETE/UPDATE` triggers.
 
 Access layer: `server/utils/file-metadata-store.ts` — `saveFileMetadata`, `getFileMetadata`,
-`isStoredMetadataFresh`, `deleteFileMetadata`, `listFiles`, `saveThumbnail`, `getThumbnail`,
-`findDuplicates`, and `searchFiles` (bm25-ranked FTS5 query with `snippet()` highlighting —
-**implemented but not yet exposed through any API route**). All writes are serialized through a
-promise-chain lock (`withWriteLock`) since `db0` shares a single connection.
+`isStoredMetadataFresh`, `deleteFileMetadata`, `listFiles` (now takes an optional `directory`
+filter — exact match, non-recursive), `listChildFolders` (immediate child folder names under a
+given parent, for the sidebar tree), `saveThumbnail`, `getThumbnail`, `findDuplicates`, and
+`searchFiles` (bm25-ranked FTS5 query with `snippet()` highlighting — **implemented but not yet
+exposed through any API route**). All writes are serialized through a promise-chain lock
+(`withWriteLock`) since `db0` shares a single connection.
 
 ## 4. API surface (current)
 
-Only 3 routes exist:
-
-- `GET /api/files?page&pageSize` → `{ rows, total, page, pageSize }`. Flat list, **all** indexed
-  files, `modified_at DESC`, no folder/path filter. Each row: `id, path, kind, mime, size,
-  modifiedAt, title`.
+- `GET /api/files?path&page&pageSize` → `{ rows, total, page, pageSize }`. Folder-scoped,
+  non-recursive: `path` (default `''`, the content root) selects files whose `directory` exactly
+  matches it. Each row: `id, path, kind, mime, size, modifiedAt, title`.
+- `GET /api/folders?path` → `{ folders: string[] }`. Immediate child folder names under `path`
+  (default `''`), alphabetically sorted — powers the sidebar tree's lazy expand/collapse.
 - `GET /api/files/:id/thumbnail` → stored WebP blob from `file_thumbnails` (`image/webp`,
   `Cache-Control: public, max-age=86400`).
 - `GET /api/files/:id/preview` → on-the-fly 800px/quality-75 WebP via `sharp`, regenerated from
   the source file on every request (images only; 415 for non-images, 404 if the file row doesn't
   exist).
 
-Missing (tracked in `docs/ROADMAP.md`): a search route backed by `searchFiles()`, and any
-folder-scoped/hierarchical listing endpoint.
+Missing (tracked in `docs/ROADMAP.md`): a search route backed by `searchFiles()`.
 
 ## 5. Frontend structure
 
@@ -105,24 +112,30 @@ app/
 ├── app.vue                          <UApp><NuxtRouteAnnouncer/><NuxtPage/></UApp>
 ├── assets/css/main.css              @import "tailwindcss"; @import "@nuxt/ui";
 ├── pages/
-│   └── index.vue                    composition-only: wires composables + components together
+│   └── index.vue                    composition-only: header, sidebar, breadcrumbs, table, modal
 ├── components/files/
 │   ├── Table.vue                    <FilesTable> — UTable wrapper, owns `columns`, emits `select`
 │   ├── Thumbnail.vue                <FilesThumbnail> — 40×40 image or fallback icon
 │   ├── PreviewModal.vue             <FilesPreviewModal> — UModal wrapper, composes the two below
 │   ├── PreviewImage.vue             <FilesPreviewImage> — large preview image or placeholder
 │   ├── MetadataGrid.vue             <FilesMetadataGrid> — 2-column metadata display
-│   └── Pagination.vue               <FilesPagination> — UPagination wrapper + "Page X of Y"
+│   ├── Pagination.vue               <FilesPagination> — UPagination wrapper + "Page X of Y"
+│   ├── Sidebar.vue                  <FilesSidebar> — root-level folder list (fetches once)
+│   ├── FolderTreeNode.vue           <FilesFolderTreeNode> — recursive node, lazy-loads own children
+│   └── Breadcrumbs.vue              <FilesBreadcrumbs> — UBreadcrumb wrapper from useCurrentFolder
 ├── composables/
-│   ├── useFileList.ts               owns page/pageSize + GET /api/files fetch; exports FileRow
-│   └── useFilePreview.ts            owns preview modal open/file state
+│   ├── useFileList.ts               owns page/pageSize + GET /api/files fetch, scoped by folder
+│   ├── useFilePreview.ts            owns preview modal open/file state
+│   └── useCurrentFolder.ts          current folder path (route `?path=`) + navigate()
 └── utils/
     └── file-format.ts               humanSize(), formatDate() — pure formatting helpers
 ```
 
 No `app/layouts/`, `app/middleware/`, `app/plugins/`, or `app/stores/` exist — `app.vue` is the
-only layout wrapper, and there's no cross-route shared state beyond what the composables above
-hold locally per page.
+only layout wrapper. The current folder lives in the URL (`?path=`), read via `useCurrentFolder`;
+`FolderTreeNode` and `Sidebar` are an intentional exception to D011 — each tree node owns its own
+lazy-loaded expand/children state locally, since that doesn't fit a single shared composable (see
+D015 in `docs/DECISIONS.md`).
 
 ## 6. Build & deploy
 

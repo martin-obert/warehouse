@@ -14,7 +14,7 @@ const emit = defineEmits<{
 
 const columns: TableColumn<FileRow>[] = [
   { id: 'thumbnail', header: '' },
-  { accessorKey: 'path', header: 'Path' },
+  { accessorKey: 'path', header: 'Name', cell: ({ row }) => row.original.path.split('/').pop() },
   { accessorKey: 'kind', header: 'Kind' },
   { accessorKey: 'mime', header: 'MIME' },
   { accessorKey: 'size', header: 'Size', cell: ({ row }) => humanSize(row.original.size) },

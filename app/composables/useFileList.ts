@@ -9,11 +9,13 @@ export interface FileRow {
 }
 
 export async function useFileList(pageSize = 20) {
+  const { path } = useCurrentFolder()
   const page = ref(1)
+  watch(path, () => { page.value = 1 })
 
   const { data, status } = await useFetch('/api/files', {
-    query: { page, pageSize },
-    watch: [page],
+    query: { path, page, pageSize },
+    watch: [path, page],
   })
 
   const rows = computed<FileRow[]>(() => data.value?.rows ?? [])
