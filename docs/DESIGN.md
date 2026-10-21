@@ -4,7 +4,7 @@ UX/visual direction for Warehouse's file-browsing experience. This is a structur
 `docs/ARCHITECTURE.md`, but for UX) — it describes the agreed layout and interaction rules so
 implementation sessions build against a settled design instead of re-deciding layout questions
 mid-implementation. Rationale for *why* these choices were made lives in `docs/DECISIONS.md`
-(D012–D014).
+(D012, D014, D016, D017).
 
 Current scope: **the browsing shell only** — layout, sidebar, breadcrumbs, header, file table.
 Explicitly not covered here: the preview modal / rich metadata redesign (`docs/ROADMAP.md` Phase
@@ -19,10 +19,10 @@ header yet.
 +----------+---------------------------------------------------------+
 | v Photos | Home / Photos / 2026 / Oct                              |   <- breadcrumb bar
 |   v 2026 +---------------------------------------------------------+
-|     > Sep|   [thumb] Path            Kind   MIME        Size   Mod |   <- table (files only)
-|     > Oct|   ...                                                   |
-|   > 2025 |                                                         |
-| > Docs   |                                                         |
+|     > Sep|   [folder] Sep             folder  --          --   --  |   <- table: folders first
+|     > Oct|   [folder] Oct             folder  --          --   --  |      (page 1 only)
+|   > 2025 |   [thumb]  img1.png        image   image/png   2KB  ... |   <- then paginated files
+| > Docs   |   ...                                                   |
 | > Audio  |                                        Page 1 of 3 [..] |   <- pagination footer
 +----------+---------------------------------------------------------+
 ```
@@ -35,17 +35,21 @@ header yet.
   icon rail) to maximize table width.
 - **Breadcrumb bar**: path from root ("Home") to the current folder; every segment is clickable.
   Stays in sync with the sidebar's selected folder and with the URL.
-- **Table**: unchanged in spirit from today's `FilesTable` — lists only files in the current
-  folder (non-recursive). No folder rows mixed in (see D013).
-- **Footer**: pagination, unchanged.
+- **Table**: shows both subfolders and files of the current folder (non-recursive) — see D017.
+  Subfolders render first (alphabetical, folder icon, `—` in MIME/Size/Modified/Title), only on
+  page 1 so they don't repeat across pages; files follow in their existing order.
+- **Footer**: pagination, unchanged — based on file count only, unaffected by folder rows.
 
 ## Interaction rules
 
-- Selecting a sidebar folder or a breadcrumb segment navigates to that folder: updates the URL,
-  refetches the file list scoped to that folder, updates the breadcrumb trail, and highlights the
-  folder in the sidebar.
+- Selecting a sidebar folder, a breadcrumb segment, or a **folder row in the table** navigates to
+  that folder: updates the URL, refetches the listing scoped to that folder, updates the
+  breadcrumb trail, and highlights the folder in the sidebar. All three are equivalent ways to
+  navigate — use whichever is closest at hand.
+- Clicking a **file row** in the table still opens the preview modal, unchanged.
 - Root/"Home" = the content root; breadcrumbs always start there.
-- An empty folder uses the table's existing empty state — no new design needed there.
+- An empty folder (no subfolders, no files) uses the table's existing empty state — no new design
+  needed there.
 
 ## Visual / density guidelines
 

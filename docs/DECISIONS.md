@@ -156,7 +156,7 @@ Rules:
 ## D013 — The file table lists files only; folders never appear as table rows
 
 - **Date:** 2026-10-21
-- **Status:** Accepted
+- **Status:** Superseded by D017
 - **Context:** Decided alongside D012. Alternative considered: the classic Explorer pattern of
   showing subfolders at the top of the table (click to descend) followed by files.
 - **Decision:** Folder traversal happens exclusively via the sidebar/breadcrumbs. The table always
@@ -206,3 +206,19 @@ Rules:
   state in this app (pagination's `page` param) and avoids catch-all splat-param array handling.
 - **Consequences:** URLs are less pretty than a path-based route. If that becomes a real complaint,
   revisit this decision rather than mixing both schemes.
+
+## D017 — The file table shows folders too (supersedes D013)
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** User request, directly reversing D013. The sidebar-only navigation model felt less
+  familiar/expected than the classic Explorer pattern of folders-and-files mixed in one listing.
+- **Decision:** The table shows subfolders of the current folder (alphabetical, folder icon,
+  `—` in MIME/Size/Modified/Title, click navigates into it) ahead of the paginated files — but
+  only on page 1, so folders don't repeat on every page. Sidebar and breadcrumbs are unchanged and
+  remain the way to jump between distant folders without descending one level at a time.
+- **Consequences:** `FilesTable`'s rows are a `ListRow` discriminated union
+  (`app/composables/useFileList.ts`), not plain `FileRow[]` — every column is now a custom `cell`
+  function branching on `rowType` instead of a plain `accessorKey`. Folder click handling lives
+  inside `FilesTable` itself (calls `useCurrentFolder().navigate()` directly); the component's
+  public `select` event still only ever fires for file rows, unchanged.

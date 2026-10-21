@@ -46,6 +46,8 @@ standard browser ... for search and organize"). UX/layout spec: `docs/DESIGN.md`
       refresh.
 - [x] Table's "Path" column renamed to "Name", shows filename only (folder-scoped browsing makes
       the full relative path redundant — breadcrumbs already show it).
+- [x] Table also lists subfolders (page 1 only, ahead of files, click-to-navigate) alongside
+      files — supersedes the original sidebar-only navigation call; see D017.
 
 ## Phase 3 — Search UI (future)
 
