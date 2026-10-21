@@ -252,3 +252,28 @@ Rules:
   matched segments in a real `<mark>` element — no `v-html` anywhere in the search UI.
 - **Consequences:** Any future UI that consumes `FileSearchHit.snippet` must follow the same
   parse-don't-inject pattern — never pipe it through `v-html` directly.
+
+## D020 — Vendor `@img/sharp-wasm32` into `.output` via a Nuxt module
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Production container crashed on boot on a Raspberry Pi 2 (32-bit ARM, Alpine/musl)
+  with `Could not load the "sharp" module using the linuxmusl-arm runtime` / `ENOENT` on
+  `@img/sharp-wasm32/lib/sharp-wasm32-0.35.5.node.wasm`. Sharp 0.35.5 has no native binary for
+  `linuxmusl-arm` at all (only `linux-arm` glibc and `linuxmusl-arm64` exist) — `@img/sharp-wasm32`
+  is the only runtime that can ever work on this board/OS combination, and `cdc8959` already made
+  it a non-optional dependency so `npm ci` always installs it. The actual gap: that package's
+  loader resolves its `.wasm` binary through a runtime-computed `fs.readFileSync` call, which
+  Nitro's static dependency tracer can't follow, so `.output` shipped the small JS glue but not
+  the 9MB binary. This is the same class of problem `modules/exiftool-vendored.ts` already works
+  around for `exiftool-vendored.pl`/`.exe`'s dynamic import — confirmed the build-stage platform
+  pinning (`BUILDPLATFORM`) is not a contributing cause, since `@img/sharp-wasm32` has no
+  `os`/`cpu` restrictions and installs identically on any build host.
+- **Decision:** Added `modules/sharp-wasm32-vendored.ts`, a Nuxt module mirroring
+  `exiftool-vendored.ts`'s pattern exactly — on Nitro's `compiled` hook, resolve
+  `@img/sharp-wasm32` via `createRequire` and `cp` the whole package into
+  `.output/server/node_modules/@img/sharp-wasm32`, so the binary ships regardless of what the
+  tracer could statically see.
+- **Consequences:** If a future sharp version bump changes `@img/sharp-wasm32`'s internal
+  structure or its own dependencies' load mechanism (e.g. `@emnapi/runtime`), this module may
+  need updating or extending — same caveat already implicitly accepted for the exiftool module.

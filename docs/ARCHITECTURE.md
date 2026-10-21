@@ -154,3 +154,7 @@ D015 in `docs/DECISIONS.md`).
 - `modules/exiftool-vendored.ts`: Nuxt module that copies the vendored ExifTool binaries into
   `.output` so EXIF extraction works in the built image. `ffprobe` is expected on PATH as an
   external binary (not bundled).
+- `modules/sharp-wasm32-vendored.ts`: Nuxt module that copies `@img/sharp-wasm32` (sharp's WASM
+  fallback, the only sharp runtime that works on 32-bit ARM + musl, e.g. Raspberry Pi) into
+  `.output` — Nitro's tracer can't follow the package's dynamic `.wasm` load and drops it
+  otherwise. See D020 in `docs/DECISIONS.md`.
