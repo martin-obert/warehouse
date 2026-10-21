@@ -15,5 +15,6 @@ export default defineNuxtConfig({
     },
     runtimeConfig: {
         contentRoot: '',
+        forceReindex: false,
     }
 })
