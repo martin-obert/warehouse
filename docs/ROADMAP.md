@@ -49,12 +49,18 @@ standard browser ... for search and organize"). UX/layout spec: `docs/DESIGN.md`
 - [x] Table also lists subfolders (page 1 only, ahead of files, click-to-navigate) alongside
       files — supersedes the original sidebar-only navigation call; see D017.
 
-## Phase 3 — Search UI (future)
+## Phase 3 — Search UI (shipped)
 
-`searchFiles()` in `server/utils/file-metadata-store.ts` already does bm25-ranked FTS5 search
-with snippet highlighting — it's just never been wired to a route. Needs:
-- A `GET /api/search` route exposing `searchFiles()`.
-- A search input + results view in the UI.
+`searchFiles()` in `server/utils/file-metadata-store.ts` does bm25-ranked FTS5 search with
+snippet highlighting.
+
+- [x] `GET /api/search?q` route exposing `searchFiles()`.
+- [x] Persistent header search input (`FilesSearchInput`), live-debounced (~250ms).
+- [x] Results view (`FilesSearchResults`) replaces the breadcrumb+table area while searching;
+      sidebar stays visible, clearing the search returns to whatever folder was active. Global
+      scope, not folder-scoped — see D018.
+- [x] Snippet markers switched from literal `<mark>`/`</mark>` HTML to control-character
+      delimiters, parsed and rendered client-side without `v-html` — see D019.
 
 ## Phase 4 — Rich metadata & secondary features (future, additive)
 

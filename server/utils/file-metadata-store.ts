@@ -133,9 +133,12 @@ export async function searchFiles({ q, kind, limit = 50, offset = 0 }: FileSearc
     params.push(Math.min(limit, 200), offset)
 
     // bm25 weights follow the FTS column order: path, title, author, description, keywords, location, extra, body
+    // Snippet markers are control chars, not HTML — the underlying text is unescaped, so wrapping
+    // matches in literal '<mark>' here would be an XSS vector once rendered. Callers split on
+    // '\x01'/'\x02' and render each side as plain (auto-escaped) text client-side.
     const sql = `
     SELECT f.id, f.path, f.kind, f.mime, f.size, f.modified_at AS modifiedAt, f.title,
-           ${hasText ? `snippet(files_fts, -1, '<mark>', '</mark>', '…', 10)` : 'NULL'} AS snippet
+           ${hasText ? `snippet(files_fts, -1, '\x01', '\x02', '…', 10)` : 'NULL'} AS snippet
     FROM ${hasText ? 'files_fts JOIN files f ON f.id = files_fts.rowid' : 'files f'}
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY ${hasText ? 'bm25(files_fts, 4, 10, 4, 3, 6, 3, 1, 1)' : 'f.modified_at DESC'}

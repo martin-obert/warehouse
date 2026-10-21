@@ -222,3 +222,33 @@ Rules:
   function branching on `rowType` instead of a plain `accessorKey`. Folder click handling lives
   inside `FilesTable` itself (calls `useCurrentFolder().navigate()` directly); the component's
   public `select` event still only ever fires for file rows, unchanged.
+
+## D018 — Search is global, not scoped to the current folder
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Decided while building Phase 3 (search UI). Alternative considered: scope results
+  to the current folder (+ subfolders), like Explorer's default "search here" — would have needed
+  a new `directory` prefix filter added to `searchFiles()`.
+- **Decision:** The search box (`app/composables/useSearch.ts`) always searches the whole indexed
+  library via `searchFiles()` exactly as it already works, regardless of which folder is currently
+  browsed. No backend filter changes.
+- **Consequences:** Search results can point anywhere in the tree — each result's full path is
+  shown so it's unambiguous. If folder-scoped search is wanted later, it's an additive filter on
+  `searchFiles()`, not a redesign.
+
+## D019 — Search snippets render without `v-html`, via control-character delimiters
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** `searchFiles()`'s SQL used SQLite FTS5's `snippet()` with literal `'<mark>'`/
+  `'</mark>'` as highlight markers, returning the **unescaped** underlying indexed text (filenames,
+  EXIF/PDF/audio metadata pulled from files on disk). Rendering that via `v-html` would be a real
+  (if narrow — requires write access to a file that gets indexed) XSS vector: any HTML/script
+  characters already present in a file's embedded metadata would execute unescaped.
+- **Decision:** `snippet()` now uses `'\x01'`/`'\x02'` control characters as markers instead of
+  HTML tags. `app/components/files/SearchResults.vue` splits the snippet string on those
+  characters and renders each segment as plain Vue text interpolation (auto-escaped), wrapping
+  matched segments in a real `<mark>` element — no `v-html` anywhere in the search UI.
+- **Consequences:** Any future UI that consumes `FileSearchHit.snippet` must follow the same
+  parse-don't-inject pattern — never pipe it through `v-html` directly.

@@ -99,8 +99,9 @@ exposed through any API route**). All writes are serialized through a promise-ch
 - `GET /api/files/:id/preview` → on-the-fly 800px/quality-75 WebP via `sharp`, regenerated from
   the source file on every request (images only; 415 for non-images, 404 if the file row doesn't
   exist).
-
-Missing (tracked in `docs/ROADMAP.md`): a search route backed by `searchFiles()`.
+- `GET /api/search?q` → `{ hits: FileSearchHit[] }`. bm25-ranked FTS5 search via `searchFiles()`,
+  global (not folder-scoped — D018). `snippet` fields use `\x01`/`\x02` control-character markers,
+  not HTML — never render them with `v-html` (D019).
 
 ## 5. Frontend structure
 
@@ -122,11 +123,14 @@ app/
 │   ├── Pagination.vue               <FilesPagination> — UPagination wrapper + "Page X of Y"
 │   ├── Sidebar.vue                  <FilesSidebar> — root-level folder list (fetches once)
 │   ├── FolderTreeNode.vue           <FilesFolderTreeNode> — recursive node, lazy-loads own children
-│   └── Breadcrumbs.vue              <FilesBreadcrumbs> — UBreadcrumb wrapper from useCurrentFolder
+│   ├── Breadcrumbs.vue              <FilesBreadcrumbs> — UBreadcrumb wrapper from useCurrentFolder
+│   ├── SearchInput.vue              <FilesSearchInput> — UInput wrapper, v-model on the query
+│   └── SearchResults.vue            <FilesSearchResults> — flat result list, safe snippet render
 ├── composables/
 │   ├── useFileList.ts               owns page/pageSize + GET /api/files fetch, scoped by folder
 │   ├── useFilePreview.ts            owns preview modal open/file state
-│   └── useCurrentFolder.ts          current folder path (route `?path=`) + navigate()
+│   ├── useCurrentFolder.ts          current folder path (route `?path=`) + navigate()
+│   └── useSearch.ts                 owns query input, debounce, GET /api/search fetch
 └── utils/
     └── file-format.ts               humanSize(), formatDate() — pure formatting helpers
 ```

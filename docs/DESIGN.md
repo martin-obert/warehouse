@@ -4,18 +4,16 @@ UX/visual direction for Warehouse's file-browsing experience. This is a structur
 `docs/ARCHITECTURE.md`, but for UX) — it describes the agreed layout and interaction rules so
 implementation sessions build against a settled design instead of re-deciding layout questions
 mid-implementation. Rationale for *why* these choices were made lives in `docs/DECISIONS.md`
-(D012, D014, D016, D017).
+(D012, D014, D016, D017, D018, D019).
 
-Current scope: **the browsing shell only** — layout, sidebar, breadcrumbs, header, file table.
-Explicitly not covered here: the preview modal / rich metadata redesign (`docs/ROADMAP.md` Phase
-4), and search or albums/collections UX (Phase 3/4) — no placeholders for those are added to the
-header yet.
+Covers the browsing shell and search (Phases 2–3). Explicitly not covered here: the preview
+modal / rich metadata redesign, or albums/collections UX (`docs/ROADMAP.md` Phase 4).
 
 ## Layout anatomy
 
 ```
 +------------------------------------------------------------------+
-| [=|>] Warehouse                                        20 files  |   <- header bar
+| [=|>] Warehouse   [ Search files...            ]       20 files  |   <- header bar
 +----------+---------------------------------------------------------+
 | v Photos | Home / Photos / 2026 / Oct                              |   <- breadcrumb bar
 |   v 2026 +---------------------------------------------------------+
@@ -25,20 +23,35 @@ header yet.
 | > Docs   |   ...                                                   |
 | > Audio  |                                        Page 1 of 3 [..] |   <- pagination footer
 +----------+---------------------------------------------------------+
+
+While searching, the breadcrumb+table area is replaced by a flat results list (sidebar stays):
+
++----------+---------------------------------------------------------+
+| v Photos |   [thumb] nolzur/warrior/PXL_...COVER.jpg                |
+|   v 2026 |            nolzur/warrior/PXL_...COVER.jpg (match)       |
+|     > Sep|   [thumb] nolzur/warrior/PXL_...ORIGINAL.dng              |
+|     > Oct|            nolzur/warrior/PXL_...ORIGINAL.dng (match)     |
+|   > 2025 |   ...                                                     |
++----------+---------------------------------------------------------+
 ```
 
-- **Header bar**: sidebar collapse/expand toggle, app title, file count (existing element,
-  unchanged from today's `app/pages/index.vue`).
+- **Header bar**: sidebar collapse/expand toggle, app title, a persistent search input, file count
+  (existing element, unchanged from today's `app/pages/index.vue`).
 - **Sidebar**: folder tree rooted at the content root. Expand/collapse of a tree node is
   independent of selection — you can open a folder's children without navigating into it.
   The active/selected folder is highlighted. Collapsing the sidebar hides it entirely (not an
-  icon rail) to maximize table width.
+  icon rail) to maximize table width. Stays visible and unchanged while searching.
 - **Breadcrumb bar**: path from root ("Home") to the current folder; every segment is clickable.
-  Stays in sync with the sidebar's selected folder and with the URL.
+  Stays in sync with the sidebar's selected folder and with the URL. Hidden while searching
+  (replaced by the results list).
 - **Table**: shows both subfolders and files of the current folder (non-recursive) — see D017.
   Subfolders render first (alphabetical, folder icon, `—` in MIME/Size/Modified/Title), only on
   page 1 so they don't repeat across pages; files follow in their existing order.
-- **Footer**: pagination, unchanged — based on file count only, unaffected by folder rows.
+- **Search results list**: flat, global (not folder-scoped — D018), live-debounced as you type.
+  Each row shows a thumbnail, full path, and a highlighted match snippet. No folders, no
+  pagination at this scale.
+- **Footer**: pagination, unchanged — based on file count only, unaffected by folder rows. Hidden
+  while searching.
 
 ## Interaction rules
 
@@ -46,10 +59,13 @@ header yet.
   that folder: updates the URL, refetches the listing scoped to that folder, updates the
   breadcrumb trail, and highlights the folder in the sidebar. All three are equivalent ways to
   navigate — use whichever is closest at hand.
-- Clicking a **file row** in the table still opens the preview modal, unchanged.
+- Clicking a **file row** in the table, or a **search result**, still opens the preview modal,
+  unchanged.
+- Typing in the search box switches the main content area to search results; clearing it reverts
+  to whatever folder was being browsed before — browsing state isn't lost while searching.
 - Root/"Home" = the content root; breadcrumbs always start there.
-- An empty folder (no subfolders, no files) uses the table's existing empty state — no new design
-  needed there.
+- An empty folder (no subfolders, no files) uses the table's existing empty state; a search with
+  no matches gets its own "No results" state.
 
 ## Visual / density guidelines
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const { page, pageSize, data, rows, total, isLoading } = await useFileList()
 const { isOpen, file, open } = useFilePreview()
+const { inputQuery, isActive: isSearching, hits, isLoading: isSearchLoading } = useSearch()
 
 const sidebarCollapsed = ref(false)
 </script>
@@ -16,6 +17,7 @@ const sidebarCollapsed = ref(false)
           @click="sidebarCollapsed = !sidebarCollapsed"
         />
         <h1 class="text-xl font-semibold text-(--ui-text-highlighted)">Warehouse</h1>
+        <FilesSearchInput v-model="inputQuery" />
         <span v-if="data" class="ml-auto text-sm text-(--ui-text-muted)">
           {{ total }} files
         </span>
@@ -26,15 +28,19 @@ const sidebarCollapsed = ref(false)
       <FilesSidebar v-if="!sidebarCollapsed" />
 
       <main class="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6">
-        <FilesBreadcrumbs class="mb-4" />
+        <FilesSearchResults v-if="isSearching" :hits="hits" :loading="isSearchLoading" @select="open" />
 
-        <UCard>
-          <FilesTable :rows="rows" :loading="isLoading" @select="open" />
+        <template v-else>
+          <FilesBreadcrumbs class="mb-4" />
 
-          <template #footer>
-            <FilesPagination v-model:page="page" :total="total" :page-size="pageSize" />
-          </template>
-        </UCard>
+          <UCard>
+            <FilesTable :rows="rows" :loading="isLoading" @select="open" />
+
+            <template #footer>
+              <FilesPagination v-model:page="page" :total="total" :page-size="pageSize" />
+            </template>
+          </UCard>
+        </template>
       </main>
     </div>
 
