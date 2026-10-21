@@ -48,9 +48,9 @@ extractors (`server/lib/file-metadata/extractors/*.ts`), bounded by a `maxConcur
 normalized `summary` object (kind, mime, dates, camera/lens, GPS, title/author/description/
 keywords, etc.) — this is what the generated SQL columns in §3 are derived from.
 
-Thumbnail/preview image generation: `server/utils/thumbnail.ts` → `generateThumbnail()` uses
-`sharp` to resize to 64px wide, WebP quality 50 — only for `image/*` mime types, persisted at
-index time. Full-size previews are generated separately, on demand (see §4).
+Thumbnail generation: `server/utils/thumbnail.ts` → `generateThumbnail()` uses `sharp` to resize
+to 64px wide, WebP quality 50 — only for `image/*` mime types, persisted at index time. Previews
+are not generated — the preview route streams the original file directly from disk (see §4, D022).
 
 ## 3. Data model
 
@@ -96,9 +96,10 @@ exposed through any API route**). All writes are serialized through a promise-ch
   (default `''`), alphabetically sorted — powers the sidebar tree's lazy expand/collapse.
 - `GET /api/files/:id/thumbnail` → stored WebP blob from `file_thumbnails` (`image/webp`,
   `Cache-Control: public, max-age=86400`).
-- `GET /api/files/:id/preview` → on-the-fly 800px/quality-75 WebP via `sharp`, regenerated from
-  the source file on every request (images only; 415 for non-images, 404 if the file row doesn't
-  exist).
+- `GET /api/files/:id/preview` → streams the full original image file from disk via
+  `fs.createReadStream` (zero CPU processing). Supports HTTP Range requests (206), ETag-based
+  conditional requests (304), and `Cache-Control: public, max-age=86400`. Returns the file's real
+  MIME type. 415 for non-images, 404 if file not found in DB or on disk. See D022.
 - `GET /api/search?q` → `{ hits: FileSearchHit[] }`. bm25-ranked FTS5 search via `searchFiles()`,
   global (not folder-scoped — D018). `snippet` fields use `\x01`/`\x02` control-character markers,
   not HTML — never render them with `v-html` (D019).

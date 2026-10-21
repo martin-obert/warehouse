@@ -84,7 +84,7 @@ Rules:
 ## D007 — Thumbnails persisted, previews generated on demand
 
 - **Date:** 2026-10-21
-- **Status:** Accepted
+- **Status:** Superseded by D022
 - **Context:** `server/utils/thumbnail.ts` generates a 64px/quality-50 WebP once at index time,
   stored in `file_thumbnails`. `server/api/files/[id]/preview.get.ts` regenerates an 800px/
   quality-75 WebP from the source file on every request, relying only on an HTTP `Cache-Control`
@@ -294,3 +294,18 @@ Rules:
 - **Consequences:** Pause state does not survive server restarts (deliberate — the crawl re-runs
   from scratch on boot anyway). If persistent pause-on-boot is needed, it would require a
   `NUXT_INDEXER_PAUSED` env var or a DB flag — not implemented now.
+
+## D022 — Preview streams the full original file from disk (supersedes D007)
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** D007 left previews generated on demand via `sharp` (800px resize + WebP encode) on
+  every request. On a Raspberry Pi 2B this took multiple seconds per image — the entire decode +
+  resize + encode pipeline ran before any bytes reached the client.
+- **Decision:** The preview route now streams the original file directly from disk via
+  `fs.createReadStream` with zero CPU processing. Supports HTTP Range requests (206 partial
+  content), ETag-based conditional requests (304), and `Cache-Control`. Thumbnails remain
+  persisted in `file_thumbnails` (unchanged from D007).
+- **Consequences:** Preview images are full-size originals, not resized. The client receives the
+  file's real MIME type (e.g. `image/jpeg`) instead of `image/webp`. Bandwidth increases vs. the
+  old 800px WebP, but delivery is instant on any hardware.
