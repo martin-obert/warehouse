@@ -277,3 +277,20 @@ Rules:
 - **Consequences:** If a future sharp version bump changes `@img/sharp-wasm32`'s internal
   structure or its own dependencies' load mechanism (e.g. `@emnapi/runtime`), this module may
   need updating or extending — same caveat already implicitly accepted for the exiftool module.
+
+## D021 — Indexer pause/resume via in-memory Promise gate
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** The background indexer crawl can take minutes for large content roots. Users need
+  to pause it (e.g. to reduce CPU load during interactive use) and resume without restarting the
+  server.
+- **Decision:** A Promise-based gate in `server/utils/file-indexer-state.ts`. The indexer
+  `await`s `indexerState.gate` before each file. When unpaused, the gate is `Promise.resolve()`
+  (zero overhead). When paused, a new unresolved Promise is created; `setPaused(false)` resolves
+  it. State is in-memory only — not persisted, resets to "running" on server restart. Controlled
+  via `POST /api/indexer/pause` with `{ paused: boolean }` body; status exposed via
+  `GET /api/indexer/status`. Frontend polls status every 3 seconds via `useIndexerStatus()`.
+- **Consequences:** Pause state does not survive server restarts (deliberate — the crawl re-runs
+  from scratch on boot anyway). If persistent pause-on-boot is needed, it would require a
+  `NUXT_INDEXER_PAUSED` env var or a DB flag — not implemented now.

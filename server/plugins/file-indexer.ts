@@ -33,10 +33,20 @@ export default defineNitroPlugin((nitroApp) => {
         if (forceReindex) console.log('NUXT_FORCE_REINDEX is set — skipping freshness checks, re-extracting all files.')
         console.log(`Crawling ${contentRoot} for media files...`)
 
+        indexerState.status = 'running'
+        indexerState.filesIndexed = 0
+        indexerState.filesTotal = 0
+        indexerState.currentFile = null
+        indexerState.error = null
+
         try {
 
             for await (const filePath of walkDir(contentRoot)) {
+                await indexerState.gate
+
+                indexerState.filesTotal++
                 const displayPath = relative(contentRoot, filePath).replaceAll('\\', '/')
+                indexerState.currentFile = displayPath
 
                 if (!forceReindex) {
                     const st = await stat(filePath, {bigint: true})
@@ -46,6 +56,7 @@ export default defineNitroPlugin((nitroApp) => {
                 const fileMetadata = await extractFileMetadata({absolutePath: filePath, displayPath}, {deep: true})
                 console.log('Saving file ' + fileMetadata.path.display)
                 const fileId = await saveFileMetadata(fileMetadata)
+                indexerState.filesIndexed++
 
                 if (fileId) {
                     const thumb = await generateThumbnail(filePath, fileMetadata.contentType.mime)
@@ -53,9 +64,14 @@ export default defineNitroPlugin((nitroApp) => {
                 }
             }
             console.log(`Indexing finished successfully.`)
+            indexerState.status = 'finished'
+            indexerState.currentFile = null
+            indexerState.lastRun = new Date()
 
         } catch (err) {
             console.error('[file-indexer]', err)
+            indexerState.status = 'error'
+            indexerState.error = err instanceof Error ? err.message : String(err)
         }
         await new Promise((r) => setTimeout(r, 250))
     }
@@ -83,15 +99,22 @@ async function createDatabase() {
     await db.exec(`
     BEGIN;
 
-    -- One row per file. "meta" is the whole FileMetadata (minus embedded documents) as JSONB.
-    -- Every other column is derived from it, so writes touch exactly one value and nothing can drift.
+    -- Drop old-version objects so the schema can be recreated cleanly.
+    -- Data is ephemeral (rebuilt from the content root on every boot).
+    DROP TRIGGER IF EXISTS files_au;
+    DROP TRIGGER IF EXISTS files_ad;
+    DROP TRIGGER IF EXISTS files_ai;
+    DROP TABLE IF EXISTS files_fts;
+    DROP TABLE IF EXISTS file_thumbnails;
+    DROP TABLE IF EXISTS file_embedded_docs;
+    DROP TABLE IF EXISTS files;
+
     CREATE TABLE files (
       id          INTEGER PRIMARY KEY,
-      path        TEXT NOT NULL UNIQUE,          -- path.display (never a server path)
-      meta        BLOB NOT NULL,                 -- JSONB
+      path        TEXT NOT NULL UNIQUE,
+      meta        BLOB NOT NULL,
       updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
-      -- filters / sorting
       kind        TEXT    GENERATED ALWAYS AS (meta ->> '$.summary.kind') VIRTUAL,
       mime        TEXT    GENERATED ALWAYS AS (meta ->> '$.summary.mime') VIRTUAL,
       size        INTEGER GENERATED ALWAYS AS (meta ->> '$.filesystem.size') VIRTUAL,
@@ -102,15 +125,9 @@ async function createDatabase() {
       lat         REAL    GENERATED ALWAYS AS (meta ->> '$.summary.gps.latitude') VIRTUAL,
       lon         REAL    GENERATED ALWAYS AS (meta ->> '$.summary.gps.longitude') VIRTUAL,
       deep        INTEGER GENERATED ALWAYS AS (meta ->> '$.extraction.deep') VIRTUAL,
-
-      -- folder-scoped browsing (Phase 2): the file's parent directory, '' for files at the content root
       directory   TEXT    GENERATED ALWAYS AS (meta ->> '$.path.directory') VIRTUAL,
-
-      -- staleness detection
       fs_mtime_ns TEXT    GENERATED ALWAYS AS (meta ->> '$.filesystem.times.modified.epochNs') VIRTUAL,
       fs_inode    TEXT    GENERATED ALWAYS AS (meta ->> '$.filesystem.inode') VIRTUAL,
-
-      -- full-text sources (keywords is the JSON array text; the tokenizer drops the punctuation)
       title       TEXT GENERATED ALWAYS AS (meta ->> '$.summary.title') VIRTUAL,
       author      TEXT GENERATED ALWAYS AS (meta ->> '$.summary.author') VIRTUAL,
       description TEXT GENERATED ALWAYS AS (meta ->> '$.summary.description') VIRTUAL,
@@ -127,11 +144,9 @@ async function createDatabase() {
     CREATE INDEX files_geo           ON files(lat, lon) WHERE lat IS NOT NULL;
     CREATE INDEX files_directory     ON files(directory);
 
-    -- Deep-mode embedded documents (timed GPS/sensor samples etc.) can be huge:
-    -- kept out of the hot row and loaded only for the detail view.
     CREATE TABLE file_embedded_docs (
       file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
-      docs    BLOB NOT NULL             -- JSONB { embeddedDocuments, embeddedDocumentsTruncated }
+      docs    BLOB NOT NULL
     );
 
     CREATE TABLE file_thumbnails (
