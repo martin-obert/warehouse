@@ -139,3 +139,86 @@ Rules:
   - Components take props and emit events; they hold no independent `useFetch` call or
     standalone state — they're presentational, composed together by pages.
 - **Consequences:** Follow this pattern for all future UI work (Phase 2+), not just Phase 1.
+
+## D012 — Sidebar tree + breadcrumbs together as the navigation model
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Decided while designing the Phase 2 browsing shell (see `docs/DESIGN.md`), via
+  direct discussion with the product owner. Options considered: sidebar-only, breadcrumb-only, or
+  both together.
+- **Decision:** Both together — a persistent, collapsible sidebar folder tree for jumping between
+  distant folders, plus a breadcrumb bar for showing/navigating the current path. Not one or the
+  other.
+- **Consequences:** Phase 2 implementation needs both a tree component and a breadcrumb component
+  (Nuxt UI ships `UBreadcrumb`, per D002), kept in sync with each other and with the URL.
+
+## D013 — The file table lists files only; folders never appear as table rows
+
+- **Date:** 2026-10-21
+- **Status:** Superseded by D017
+- **Context:** Decided alongside D012. Alternative considered: the classic Explorer pattern of
+  showing subfolders at the top of the table (click to descend) followed by files.
+- **Decision:** Folder traversal happens exclusively via the sidebar/breadcrumbs. The table always
+  shows just the files within the currently selected folder — no mixed row types, no folder rows.
+- **Consequences:** The table/`FilesTable` component and its backing API never need to represent a
+  "folder" row type — simpler column model, simpler click handling (every row is always a file,
+  opens the preview modal).
+
+## D014 — Utilitarian/dense visual direction for the browsing shell
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Decided while designing the Phase 2 browsing shell (see `docs/DESIGN.md`). Options
+  considered: utilitarian file-manager (Finder/Explorer/VS Code), modern SaaS dashboard
+  (Linear/Notion-like), or media-first gallery (Google Photos/Immich-like).
+- **Decision:** Utilitarian file-manager — dense, neutral, functional. Flat surfaces, minimal
+  elevation/shadow, compact spacing, no new color palette beyond the existing Nuxt UI dark theme
+  tokens.
+- **Consequences:** Don't introduce card-heavy layouts, large whitespace, or decorative visual
+  elements in browsing-shell UI without revisiting this decision first.
+
+## D015 — Folder tree nodes own their own lazy-loaded state (exception to D011)
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Implementing the Phase 2 sidebar (`app/components/files/FolderTreeNode.vue`,
+  `Sidebar.vue`). D011 says composables own fetching/state and components stay presentational —
+  but a folder tree is recursive and each node's children are only known/loaded on first expand;
+  there's no single flat list a shared composable could sensibly own ahead of time.
+- **Decision:** `FolderTreeNode` is a self-referencing recursive component that owns its own
+  `expanded`/`children` state locally and lazy-fetches `/api/folders?path=...` via `$fetch` on
+  first expand. `Sidebar` similarly fetches the root level itself via `useFetch` on mount.
+- **Consequences:** This is a deliberate, scoped exception to D011 for recursive/lazy tree
+  structures specifically — don't use it as precedent for giving other (non-recursive) components
+  their own fetch/state; the Phase 1 convention still applies everywhere else.
+
+## D016 — Current folder lives in a `?path=` query param, not a catch-all route
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** `docs/DESIGN.md`'s implementation note for Phase 2 required the current folder to
+  be reflected in the URL (linkable/bookmarkable, survives refresh), without mandating a specific
+  routing mechanism. Alternative considered: a catch-all route (`app/pages/[...path].vue`) giving
+  prettier URLs (`/Photos/2026/Oct` vs `/?path=Photos%2F2026%2FOct`).
+- **Decision:** A `?path=` query param on the existing `/` route, read/written through
+  `app/composables/useCurrentFolder.ts`. Matches the existing precedent of query-param-driven
+  state in this app (pagination's `page` param) and avoids catch-all splat-param array handling.
+- **Consequences:** URLs are less pretty than a path-based route. If that becomes a real complaint,
+  revisit this decision rather than mixing both schemes.
+
+## D017 — The file table shows folders too (supersedes D013)
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** User request, directly reversing D013. The sidebar-only navigation model felt less
+  familiar/expected than the classic Explorer pattern of folders-and-files mixed in one listing.
+- **Decision:** The table shows subfolders of the current folder (alphabetical, folder icon,
+  `—` in MIME/Size/Modified/Title, click navigates into it) ahead of the paginated files — but
+  only on page 1, so folders don't repeat on every page. Sidebar and breadcrumbs are unchanged and
+  remain the way to jump between distant folders without descending one level at a time.
+- **Consequences:** `FilesTable`'s rows are a `ListRow` discriminated union
+  (`app/composables/useFileList.ts`), not plain `FileRow[]` — every column is now a custom `cell`
+  function branching on `rowType` instead of a plain `accessorKey`. Folder click handling lives
+  inside `FilesTable` itself (calls `useCurrentFolder().navigate()` directly); the component's
+  public `select` event still only ever fires for file rows, unchanged.

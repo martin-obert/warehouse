@@ -6,7 +6,7 @@ import {generateThumbnail} from "#server/utils/thumbnail.ts";
 
 // Requires SQLite >= 3.45 (JSONB, concat_ws, contentless/external FTS5) — Node 22's node:sqlite qualifies.
 
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
 async function* walkDir(dir: string): AsyncGenerator<string> {
     const d = await opendir(dir)
@@ -21,9 +21,6 @@ async function* walkDir(dir: string): AsyncGenerator<string> {
 }
 
 export default defineNitroPlugin((nitroApp) => {
-
-    let running = true
-
     async function run() {
         await createDatabase()
 
@@ -36,33 +33,29 @@ export default defineNitroPlugin((nitroApp) => {
 
         console.log(`Crawling ${contentRoot} for media files...`)
 
-        while (running) {
-            try {
+        try {
 
-                for await (const filePath of walkDir(contentRoot)) {
-                    const displayPath = relative(contentRoot, filePath).replaceAll('\\', '/')
-                    const fileMetadata = await extractFileMetadata({absolutePath: filePath, displayPath}, {deep: true})
-                    console.log('Saving file ' + fileMetadata.path.display)
-                    const fileId = await saveFileMetadata(fileMetadata)
+            for await (const filePath of walkDir(contentRoot)) {
+                const displayPath = relative(contentRoot, filePath).replaceAll('\\', '/')
+                const fileMetadata = await extractFileMetadata({absolutePath: filePath, displayPath}, {deep: true})
+                console.log('Saving file ' + fileMetadata.path.display)
+                const fileId = await saveFileMetadata(fileMetadata)
 
-                    if (fileId) {
-                        const thumb = await generateThumbnail(filePath, fileMetadata.contentType.mime)
-                        if (thumb) await saveThumbnail(fileId, thumb)
-                    }
+                if (fileId) {
+                    const thumb = await generateThumbnail(filePath, fileMetadata.contentType.mime)
+                    if (thumb) await saveThumbnail(fileId, thumb)
                 }
-
-            } catch (err) {
-                console.error('[file-indexer]', err)
             }
-            await new Promise((r) => setTimeout(r, 250))
+            console.log(`Indexing finished successfully.`)
+
+        } catch (err) {
+            console.error('[file-indexer]', err)
         }
+        await new Promise((r) => setTimeout(r, 250))
     }
 
     run()
 
-    nitroApp.hooks.hook('close', () => {
-        running = false
-    })
 })
 
 
@@ -104,6 +97,9 @@ async function createDatabase() {
       lon         REAL    GENERATED ALWAYS AS (meta ->> '$.summary.gps.longitude') VIRTUAL,
       deep        INTEGER GENERATED ALWAYS AS (meta ->> '$.extraction.deep') VIRTUAL,
 
+      -- folder-scoped browsing (Phase 2): the file's parent directory, '' for files at the content root
+      directory   TEXT    GENERATED ALWAYS AS (meta ->> '$.path.directory') VIRTUAL,
+
       -- staleness detection
       fs_mtime_ns TEXT    GENERATED ALWAYS AS (meta ->> '$.filesystem.times.modified.epochNs') VIRTUAL,
       fs_inode    TEXT    GENERATED ALWAYS AS (meta ->> '$.filesystem.inode') VIRTUAL,
@@ -123,6 +119,7 @@ async function createDatabase() {
     CREATE INDEX files_modified      ON files(modified_at DESC);
     CREATE INDEX files_sha256        ON files(sha256) WHERE sha256 IS NOT NULL;
     CREATE INDEX files_geo           ON files(lat, lon) WHERE lat IS NOT NULL;
+    CREATE INDEX files_directory     ON files(directory);
 
     -- Deep-mode embedded documents (timed GPS/sensor samples etc.) can be huge:
     -- kept out of the hot row and loaded only for the detail view.

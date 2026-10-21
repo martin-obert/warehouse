@@ -28,18 +28,26 @@ Rules:
 - [x] `app/pages/index.vue` decomposed into `app/components/files/*` + `app/composables/*` +
       `app/utils/file-format.ts` (behavior-preserving — no new features).
 
-## Phase 2 — Folder/Directory Navigation (next, not built yet)
+## Phase 2 — Folder/Directory Navigation (shipped)
 
 Goal: browsing feels like a standard file browser — open the app at the content root, see
 subfolders and files, navigate in and out via breadcrumbs — instead of one flat list of every
 indexed file. This is the primary stated use case (per the product owner: "navigate like a
-standard browser ... for search and organize").
+standard browser ... for search and organize"). UX/layout spec: `docs/DESIGN.md`.
 
-Not yet designed in detail. Expected shape:
-- A folder-scoped listing, replacing or augmenting the flat `GET /api/files` (which currently
-  returns *all* indexed files with no path/folder filter at all).
-- A breadcrumb UI — Nuxt UI already ships a `UBreadcrumb` component, no new dependency needed.
-- Click-into-folder navigation, with the current folder reflected in the URL.
+- [x] `directory` generated column + index on `files` (schema v3); `listFiles()` takes an
+      optional `directory` filter (exact match, non-recursive).
+- [x] `listChildFolders()` + `GET /api/folders?path` for sidebar tree lazy-loading.
+- [x] `GET /api/files` scoped by `?path=` (default: content root), replacing the old flat-all-files
+      default.
+- [x] Collapsible sidebar folder tree (`FilesSidebar` + recursive `FilesFolderTreeNode`).
+- [x] Breadcrumb bar (`FilesBreadcrumbs`, wraps `UBreadcrumb`).
+- [x] Current folder reflected in the URL (`?path=`, see D016) — linkable/bookmarkable, survives
+      refresh.
+- [x] Table's "Path" column renamed to "Name", shows filename only (folder-scoped browsing makes
+      the full relative path redundant — breadcrumbs already show it).
+- [x] Table also lists subfolders (page 1 only, ahead of files, click-to-navigate) alongside
+      files — supersedes the original sidebar-only navigation call; see D017.
 
 ## Phase 3 — Search UI (future)
 
