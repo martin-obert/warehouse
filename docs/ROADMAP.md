@@ -1,0 +1,68 @@
+# Roadmap
+
+Living backlog for Warehouse. This file is read by every agent/dev session **before** starting
+work and updated **after** finishing (see `CLAUDE.md`).
+
+Rules:
+- Checked-off items are never deleted or un-checked — they're the project's history.
+- New phases are appended at the bottom, in order.
+- A phase can be partially shipped; leave individual items unchecked until they're actually done.
+
+## Phase 0 — Indexing & Metadata Pipeline (shipped)
+
+- [x] Nitro background indexer plugin (`server/plugins/file-indexer.ts`) walks `NUXT_CONTENT_ROOT`
+      on boot and continuously re-crawls.
+- [x] 8 pluggable, failure-isolated metadata extractors (`server/lib/file-metadata/extractors/*`):
+      filesystem, content-type, content-scan, exiftool, image, media (ffprobe), audio, pdf.
+- [x] SQLite schema with a single JSONB `meta` blob per file + generated virtual columns, plus an
+      FTS5 full-text index kept in sync via triggers.
+- [x] Thumbnail generation (64px WebP) persisted at index time.
+- [x] On-demand preview generation (800px WebP), uncached.
+- [x] Flat paginated file list API (`GET /api/files`) + thumbnail/preview routes.
+
+## Phase 1 — Process Scaffolding & Frontend Foundation (this plan)
+
+- [x] `docs/ROADMAP.md`, `docs/DECISIONS.md`, `docs/ARCHITECTURE.md` created.
+- [x] `CLAUDE.md` updated with the agent workflow loop (read roadmap/decisions before, update after).
+- [x] `README.md` replaced with a real project description for human contributors.
+- [x] `app/pages/index.vue` decomposed into `app/components/files/*` + `app/composables/*` +
+      `app/utils/file-format.ts` (behavior-preserving — no new features).
+
+## Phase 2 — Folder/Directory Navigation (next, not built yet)
+
+Goal: browsing feels like a standard file browser — open the app at the content root, see
+subfolders and files, navigate in and out via breadcrumbs — instead of one flat list of every
+indexed file. This is the primary stated use case (per the product owner: "navigate like a
+standard browser ... for search and organize").
+
+Not yet designed in detail. Expected shape:
+- A folder-scoped listing, replacing or augmenting the flat `GET /api/files` (which currently
+  returns *all* indexed files with no path/folder filter at all).
+- A breadcrumb UI — Nuxt UI already ships a `UBreadcrumb` component, no new dependency needed.
+- Click-into-folder navigation, with the current folder reflected in the URL.
+
+## Phase 3 — Search UI (future)
+
+`searchFiles()` in `server/utils/file-metadata-store.ts` already does bm25-ranked FTS5 search
+with snippet highlighting — it's just never been wired to a route. Needs:
+- A `GET /api/search` route exposing `searchFiles()`.
+- A search input + results view in the UI.
+
+## Phase 4 — Rich metadata & secondary features (future, additive)
+
+- Surface the deep metadata already extracted (EXIF/GPS/camera/lens, audio tags, PDF text, etc.)
+  in the preview — today only `kind`, `mime`, `size`, `modifiedAt`, `title` are shown.
+- Albums/collections.
+- Thumbnails/previews for non-image media types (audio, PDF, video) — only images are handled
+  today (`generateThumbnail()` / `/api/files/:id/preview` both early-return for non-image mime
+  types).
+
+## Known Gaps (not scheduled)
+
+- SQLite DB (`.data/app.sqlite3`) and generated thumbnails live in the container's writable layer;
+  `docker-compose.yml` only volume-mounts the content root, so both are lost on every redeploy.
+  *(Owner is handling this separately — not part of this roadmap.)*
+- A stray, tracked 0-byte `identifier.sqlite` file sits at the repo root, unrelated to the real
+  (gitignored) app database.
+- `searchFiles()`/FTS5 exist and work but have no API route (see Phase 3).
+- No lint, test, or typecheck script in `package.json`.

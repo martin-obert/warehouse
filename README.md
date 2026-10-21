@@ -1,75 +1,37 @@
-# Nuxt Minimal Starter
+# Warehouse
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+An internal-network file explorer. Point it at a directory and it indexes everything inside: EXIF/GPS
+data, audio tags, PDF text, content-type sniffing, and image thumbnails — then serves a browsable
+web UI over that index. Designed to run unauthenticated on a trusted internal network.
 
-## Setup
+## Features
 
-Make sure to install dependencies:
+- Background indexing on startup — walks the content root and keeps re-crawling, no manual re-index step.
+- Rich per-file metadata extraction (EXIF/IPTC/XMP/GPS, audio tags, PDF text, content-type/magic-byte sniffing).
+- Thumbnails and full-size previews for images.
+- Full-text search over metadata, built on SQLite FTS5 (API route pending — see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+
+## Getting Started
 
 ```bash
-# npm
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+NUXT_CONTENT_ROOT=/path/to/your/files npm run dev
 ```
 
-## Development Server
+Then open `http://localhost:3000`.
 
-Start the development server on `http://localhost:3000`:
+## Docker
 
 ```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+docker compose up
 ```
 
-## Production
+See `docker-compose.yml` — mount the directory you want indexed and point `NUXT_CONTENT_ROOT` at
+it inside the container.
 
-Build the application for production:
+## Project Docs
 
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's shipped, what's next.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — settled technical/UI decisions and why.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current system structure.
+- [`CLAUDE.md`](CLAUDE.md) — instructions for AI coding agents working in this repo.
