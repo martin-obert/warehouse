@@ -46,11 +46,6 @@ const columns: TableColumn<ListRow>[] = [
     header: 'Modified',
     cell: ({ row }) => row.original.rowType === 'folder' ? '—' : formatDate(row.original.file.modifiedAt),
   },
-  {
-    id: 'title',
-    header: 'Title',
-    cell: ({ row }) => row.original.rowType === 'folder' ? '' : (row.original.file.title ?? ''),
-  },
 ]
 </script>
 
