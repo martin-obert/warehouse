@@ -139,3 +139,41 @@ Rules:
   - Components take props and emit events; they hold no independent `useFetch` call or
     standalone state — they're presentational, composed together by pages.
 - **Consequences:** Follow this pattern for all future UI work (Phase 2+), not just Phase 1.
+
+## D012 — Sidebar tree + breadcrumbs together as the navigation model
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Decided while designing the Phase 2 browsing shell (see `docs/DESIGN.md`), via
+  direct discussion with the product owner. Options considered: sidebar-only, breadcrumb-only, or
+  both together.
+- **Decision:** Both together — a persistent, collapsible sidebar folder tree for jumping between
+  distant folders, plus a breadcrumb bar for showing/navigating the current path. Not one or the
+  other.
+- **Consequences:** Phase 2 implementation needs both a tree component and a breadcrumb component
+  (Nuxt UI ships `UBreadcrumb`, per D002), kept in sync with each other and with the URL.
+
+## D013 — The file table lists files only; folders never appear as table rows
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Decided alongside D012. Alternative considered: the classic Explorer pattern of
+  showing subfolders at the top of the table (click to descend) followed by files.
+- **Decision:** Folder traversal happens exclusively via the sidebar/breadcrumbs. The table always
+  shows just the files within the currently selected folder — no mixed row types, no folder rows.
+- **Consequences:** The table/`FilesTable` component and its backing API never need to represent a
+  "folder" row type — simpler column model, simpler click handling (every row is always a file,
+  opens the preview modal).
+
+## D014 — Utilitarian/dense visual direction for the browsing shell
+
+- **Date:** 2026-10-21
+- **Status:** Accepted
+- **Context:** Decided while designing the Phase 2 browsing shell (see `docs/DESIGN.md`). Options
+  considered: utilitarian file-manager (Finder/Explorer/VS Code), modern SaaS dashboard
+  (Linear/Notion-like), or media-first gallery (Google Photos/Immich-like).
+- **Decision:** Utilitarian file-manager — dense, neutral, functional. Flat surfaces, minimal
+  elevation/shadow, compact spacing, no new color palette beyond the existing Nuxt UI dark theme
+  tokens.
+- **Consequences:** Don't introduce card-heavy layouts, large whitespace, or decorative visual
+  elements in browsing-shell UI without revisiting this decision first.

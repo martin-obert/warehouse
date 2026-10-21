@@ -35,6 +35,7 @@ Before starting any work:
 1. Read `docs/ROADMAP.md` for the current phase and what's pending.
 2. Read `docs/DECISIONS.md` so you don't re-litigate settled choices.
 3. Skim `docs/ARCHITECTURE.md` for current structure instead of re-exploring from scratch.
+4. For UI work, also read `docs/DESIGN.md` for the agreed layout/interaction direction.
 
 Before finishing any work:
 1. Check off completed items in `docs/ROADMAP.md` (append new phases at the bottom; never delete history).

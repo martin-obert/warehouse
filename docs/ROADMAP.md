@@ -35,10 +35,13 @@ subfolders and files, navigate in and out via breadcrumbs — instead of one fla
 indexed file. This is the primary stated use case (per the product owner: "navigate like a
 standard browser ... for search and organize").
 
-Not yet designed in detail. Expected shape:
+The UX/layout direction for this phase is already settled — see `docs/DESIGN.md` for the full
+spec (sidebar tree + breadcrumbs, table lists files only, utilitarian visual direction) before
+starting implementation. Expected shape:
 - A folder-scoped listing, replacing or augmenting the flat `GET /api/files` (which currently
   returns *all* indexed files with no path/folder filter at all).
-- A breadcrumb UI — Nuxt UI already ships a `UBreadcrumb` component, no new dependency needed.
+- A collapsible sidebar folder tree + breadcrumb UI — Nuxt UI already ships a `UBreadcrumb`
+  component, no new dependency needed.
 - Click-into-folder navigation, with the current folder reflected in the URL.
 
 ## Phase 3 — Search UI (future)
