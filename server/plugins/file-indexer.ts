@@ -1,11 +1,12 @@
 import {opendir} from 'node:fs/promises'
 import {join, relative} from 'node:path'
 import {extractFileMetadata} from "#server/lib/file-metadata";
-import {saveFileMetadata} from "#server/utils/file-metadata-store.ts";
+import {saveFileMetadata, saveThumbnail} from "#server/utils/file-metadata-store.ts";
+import {generateThumbnail} from "#server/utils/thumbnail.ts";
 
 // Requires SQLite >= 3.45 (JSONB, concat_ws, contentless/external FTS5) — Node 22's node:sqlite qualifies.
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 
 async function* walkDir(dir: string): AsyncGenerator<string> {
     const d = await opendir(dir)
@@ -42,7 +43,12 @@ export default defineNitroPlugin((nitroApp) => {
                     const displayPath = relative(contentRoot, filePath).replaceAll('\\', '/')
                     const fileMetadata = await extractFileMetadata({absolutePath: filePath, displayPath}, {deep: true})
                     console.log('Saving file ' + fileMetadata.path.display)
-                    await saveFileMetadata(fileMetadata)
+                    const fileId = await saveFileMetadata(fileMetadata)
+
+                    if (fileId) {
+                        const thumb = await generateThumbnail(filePath, fileMetadata.contentType.mime)
+                        if (thumb) await saveThumbnail(fileId, thumb)
+                    }
                 }
 
             } catch (err) {
@@ -123,6 +129,13 @@ async function createDatabase() {
     CREATE TABLE file_embedded_docs (
       file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
       docs    BLOB NOT NULL             -- JSONB { embeddedDocuments, embeddedDocumentsTruncated }
+    );
+
+    CREATE TABLE file_thumbnails (
+      file_id  INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+      data     BLOB NOT NULL,
+      width    INTEGER NOT NULL,
+      height   INTEGER NOT NULL
     );
 
     CREATE VIRTUAL TABLE files_fts USING fts5(
