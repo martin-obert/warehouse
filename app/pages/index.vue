@@ -2,6 +2,14 @@
 const { page, pageSize, data, rows, total, isLoading } = await useFileList()
 const { isOpen, file, open } = useFilePreview()
 const { inputQuery, isActive: isSearching, hits, isLoading: isSearchLoading } = useSearch()
+const {
+  paused: indexerPaused,
+  isRunning: indexerRunning,
+  isFinished: indexerFinished,
+  filesIndexed,
+  filesTotal,
+  togglePause: toggleIndexer,
+} = useIndexerStatus()
 
 const sidebarCollapsed = ref(false)
 </script>
@@ -18,6 +26,21 @@ const sidebarCollapsed = ref(false)
         />
         <h1 class="text-xl font-semibold text-(--ui-text-highlighted)">Warehouse</h1>
         <FilesSearchInput v-model="inputQuery" />
+
+        <UTooltip :text="indexerPaused ? 'Resume indexing' : 'Pause indexing'">
+          <UButton
+            :icon="indexerPaused ? 'i-lucide-play' : 'i-lucide-pause'"
+            variant="ghost"
+            color="neutral"
+            size="xs"
+            :disabled="indexerFinished"
+            @click="toggleIndexer"
+          />
+        </UTooltip>
+        <span v-if="indexerRunning || indexerPaused" class="text-xs text-(--ui-text-dimmed) tabular-nums">
+          {{ filesIndexed }}/{{ filesTotal }}
+        </span>
+
         <span v-if="data" class="ml-auto text-sm text-(--ui-text-muted)">
           {{ total }} files
         </span>

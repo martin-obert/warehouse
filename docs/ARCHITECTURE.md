@@ -102,6 +102,11 @@ exposed through any API route**). All writes are serialized through a promise-ch
 - `GET /api/search?q` → `{ hits: FileSearchHit[] }`. bm25-ranked FTS5 search via `searchFiles()`,
   global (not folder-scoped — D018). `snippet` fields use `\x01`/`\x02` control-character markers,
   not HTML — never render them with `v-html` (D019).
+- `GET /api/indexer/status` → `{ status, paused, filesIndexed, filesTotal, currentFile, error,
+  lastRun }`. Live snapshot of the background indexer's state from the in-memory
+  `indexerState` singleton.
+- `POST /api/indexer/pause` ← `{ paused: boolean }` → `{ status, paused }`. Toggles the
+  indexer's pause gate (D021).
 
 ## 5. Frontend structure
 
@@ -130,6 +135,7 @@ app/
 │   ├── useFileList.ts               owns page/pageSize + GET /api/files fetch, scoped by folder
 │   ├── useFilePreview.ts            owns preview modal open/file state
 │   ├── useCurrentFolder.ts          current folder path (route `?path=`) + navigate()
+│   ├── useIndexerStatus.ts          polls GET /api/indexer/status, exposes togglePause()
 │   └── useSearch.ts                 owns query input, debounce, GET /api/search fetch
 └── utils/
     └── file-format.ts               humanSize(), formatDate() — pure formatting helpers
