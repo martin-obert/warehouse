@@ -66,3 +66,11 @@ with snippet highlighting — it's just never been wired to a route. Needs:
   (gitignored) app database.
 - `searchFiles()`/FTS5 exist and work but have no API route (see Phase 3).
 - No lint, test, or typecheck script in `package.json`.
+- A Vue "Hydration completed but contains mismatches" warning fires on every load of `/`.
+  Confirmed pre-existing (2026-10-21): reproduces with the literal pre-Phase-1 `index.vue`
+  restored, so it predates the Phase 1 refactor. Ruled out so far: a client-side refetch racing
+  the background indexer (no second `/api/files` request happens after load — checked via the
+  Network tab), `formatDate()` locale mismatch (server HTML and the live DOM render identical
+  date strings), and `UTable`'s `sticky` prop (warning persists with it removed). Needs a proper
+  Vue devtools session to find the actual mismatched node — the console only logs the one-line
+  summary, not a per-node diff.
