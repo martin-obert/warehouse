@@ -4,6 +4,7 @@ const { isOpen, file, open } = useFilePreview()
 const { inputQuery, isActive: isSearching, hits, isLoading: isSearchLoading } = useSearch()
 const {
   paused: indexerPaused,
+  phase: indexerPhase,
   isRunning: indexerRunning,
   isFinished: indexerFinished,
   filesIndexed,
@@ -38,7 +39,7 @@ const sidebarCollapsed = ref(false)
           />
         </UTooltip>
         <span v-if="indexerRunning || indexerPaused" class="text-xs text-(--ui-text-dimmed) tabular-nums">
-          {{ filesIndexed }}/{{ filesTotal }}
+          <template v-if="indexerPhase">{{ indexerPhase }}: </template>{{ filesIndexed }}/{{ filesTotal }}
         </span>
 
         <span v-if="data" class="ml-auto text-sm text-(--ui-text-muted)">

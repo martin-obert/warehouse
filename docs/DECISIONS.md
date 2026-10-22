@@ -309,3 +309,68 @@ Rules:
 - **Consequences:** Preview images are full-size originals, not resized. The client receives the
   file's real MIME type (e.g. `image/jpeg`) instead of `image/webp`. Bandwidth increases vs. the
   old 800px WebP, but delivery is instant on any hardware.
+
+## D023 — RAM optimization: sharp cache/concurrency, single-decode thumbnail, heap backpressure
+
+- **Date:** 2026-10-22
+- **Status:** Accepted
+- **Context:** Running on a Raspberry Pi 2 (1GB RAM), the indexer spiked memory badly — sharp's
+  internal cache held decoded images between calls, deep-mode stats and perceptual hash decoded the
+  same image twice in parallel (~300MB per large photo), and thumbnail generation was a third
+  separate decode. No Node.js heap ceiling was set.
+- **Decision:** A set of complementary RAM optimizations:
+  - `sharp.cache(false)` + `sharp.concurrency(1)` at startup (`server/plugins/file-metadata.ts`).
+  - Deep-mode image stats and perceptual hash run sequentially instead of `Promise.all`.
+  - Thumbnail generation is bundled into `extractImage()` (`{ withThumbnail: true }`) — one
+    decode serves metadata + thumbnail. `server/utils/thumbnail.ts` is now dead code.
+  - `extractFileMetadata()` returns `FileMetadataResult { metadata, thumbnail }`.
+  - Indexer concurrency defaults to 1, configurable via `NUXT_INDEXER_CONCURRENCY`.
+  - Dockerfile sets `--max-old-space-size=384 --expose-gc`.
+  - Indexer checks `process.memoryUsage().heapUsed` before each file; if above 256MB, calls
+    `global.gc()` and pauses 50ms.
+  - `maxPdfBytes` default lowered from 256MB to 64MB; ffprobe `maxBuffer` from 64MB to 8MB.
+- **Consequences:** Peak RAM for image-heavy workloads drops by 200–400MB. Indexing throughput is
+  slightly lower (sequential sharp ops, concurrency 1) — acceptable on memory-constrained targets;
+  `NUXT_INDEXER_CONCURRENCY` can be raised on beefier hardware.
+
+## D024 — Two-phase shallow/deep indexing
+
+- **Date:** 2026-10-22
+- **Status:** Accepted
+- **Context:** The indexer previously ran one pass with `deep: true` for every file. On large
+  content roots this meant the UI showed nothing until the full heavy extraction (sharp pixel
+  decode, exiftool deep scan, pdf.js text extraction, content hashing) finished for each file.
+- **Decision:** The indexer now runs two sequential passes:
+  1. **Shallow pass** (`deep: false`): fast, low-memory. Runs all extractors in their light mode
+     (no content hashing, no pixel stats, no thumbnails). Gives the UI file listings immediately.
+  2. **Deep pass** (`deep: true, withThumbnail: true`): heavy extractors, content hashing, pixel
+     statistics, thumbnails. Per-file errors are caught and logged — one bad file doesn't abort
+     the crawl.
+  `indexerState.phase` (`"shallow"` | `"deep"` | `null`) is exposed via `GET /api/indexer/status`
+  and shown in the UI header alongside the progress counter.
+- **Consequences:** Users see their files in the UI within seconds instead of waiting for the full
+  deep extraction to finish. `filesIndexed`/`filesTotal` counters reset between phases.
+
+## D025 — Worker-thread isolation deferred (bundling complexity)
+
+- **Date:** 2026-10-22
+- **Status:** Deferred
+- **Context:** Moving heavy extractors (sharp, pdf.js) into a `worker_threads` Worker with
+  `resourceLimits.maxOldGenerationSizeMb` would isolate memory so that if one file causes an OOM
+  the main server stays alive. However, Nitro bundles all server code into chunks — a Worker needs
+  its own entry point with access to the same extraction code, requiring build-time module support,
+  worker-specific bundling, and IPC for DB writes.
+- **Decision:** Deferred. The current mitigations (heap pressure check, per-file error catching,
+  `--max-old-space-size`, two-phase indexing) provide sufficient resilience for now. If fatal OOMs
+  become a real problem, the next step is a Nuxt module that emits a dedicated worker entry point
+  into `.output` at build time.
+
+## D026 — Stream-based PDF loading blocked by pdf.js API
+
+- **Date:** 2026-10-22
+- **Status:** Blocked
+- **Context:** `extractPdf()` loads the entire PDF into memory via `readFile()` →
+  `new Uint8Array()` before passing to `getDocumentProxy()`. Streaming would eliminate this buffer.
+- **Decision:** Blocked. pdf.js (via unpdf) requires the full buffer upfront —
+  `getDocumentProxy()` has no streaming API. `maxPdfBytes` (now 64MB, was 256MB) caps the
+  worst case. Revisit if a future unpdf/pdf.js version adds streaming support.

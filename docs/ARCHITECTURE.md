@@ -19,14 +19,21 @@ background indexer plugin in the same process — there is no separate backend s
 
 `server/plugins/file-indexer.ts` runs on boot:
 1. `createDatabase()` — ensures the schema exists (see §3), gated by `PRAGMA user_version`.
-2. An infinite loop: `walkDir(contentRoot)` recursively yields every file, then for each one:
-   - `extractFileMetadata({ absolutePath, displayPath }, { deep: true })` — runs the full
-     extractor pipeline (see below).
-   - `saveFileMetadata(meta)` — upserts into `files` (skipped as a no-op if the file didn't
-     change — see §3 generated staleness columns).
-   - If an id was returned (row actually written) and the file is an image: `generateThumbnail()`
-     → `saveThumbnail()`.
-   - 250ms pause between full passes. No filesystem watcher — this is a continuous re-crawl.
+2. **Shallow pass**: `walkDir(contentRoot)` recursively yields every file, then for each one:
+   - `extractFileMetadata({ absolutePath, displayPath }, { deep: false })` — runs all extractors
+     in their light/fast mode (no content hashing, no pixel stats, no thumbnails). Gives the UI
+     usable file listings (path, kind, mime, size, dates) immediately.
+   - `saveFileMetadata(meta)` — upserts into `files` (skipped if unchanged).
+3. **Deep pass**: re-walks the tree, this time with `{ deep: true, withThumbnail: true }`:
+   - `extractFileMetadata()` runs the full extractor pipeline (see below) including content
+     hashing, pixel statistics, perceptual hashing, and thumbnail generation (bundled into the
+     image extractor to avoid redundant decodes).
+   - `saveFileMetadata(meta)` — deep write overwrites the shallow row.
+   - If an id was returned and the image extractor produced a thumbnail: `saveThumbnail()`.
+   - Per-file errors are caught and logged; one bad file doesn't abort the crawl.
+   - Heap pressure check: if `heapUsed > 256MB`, triggers `gc()` and pauses 50ms before
+     continuing.
+   - No filesystem watcher — this is a single-pass crawl.
 
 `server/lib/file-metadata/index.ts` orchestrates extraction. `extractFileMetadata()` runs 8
 extractors (`server/lib/file-metadata/extractors/*.ts`), bounded by a `maxConcurrent` semaphore
@@ -48,9 +55,15 @@ extractors (`server/lib/file-metadata/extractors/*.ts`), bounded by a `maxConcur
 normalized `summary` object (kind, mime, dates, camera/lens, GPS, title/author/description/
 keywords, etc.) — this is what the generated SQL columns in §3 are derived from.
 
-Thumbnail generation: `server/utils/thumbnail.ts` → `generateThumbnail()` uses `sharp` to resize
-to 64px wide, WebP quality 50 — only for `image/*` mime types, persisted at index time. Previews
-are not generated — the preview route streams the original file directly from disk (see §4, D022).
+Thumbnail generation is bundled into `extractImage()` (`server/lib/file-metadata/extractors/image.ts`)
+when called with `{ withThumbnail: true }` — produces a 64px WebP (quality 50) during the same
+sharp session that reads image metadata, avoiding a redundant decode. Only for `image/*` mime types,
+persisted at index time. The standalone `server/utils/thumbnail.ts` is deprecated (dead code).
+Previews are not generated — the preview route streams the original file directly from disk
+(see §4, D022).
+
+`extractFileMetadata()` returns a `FileMetadataResult` containing both `metadata: FileMetadata` and
+`thumbnail: ExtractionThumbnail | null`.
 
 ## 3. Data model
 
@@ -103,9 +116,9 @@ exposed through any API route**). All writes are serialized through a promise-ch
 - `GET /api/search?q` → `{ hits: FileSearchHit[] }`. bm25-ranked FTS5 search via `searchFiles()`,
   global (not folder-scoped — D018). `snippet` fields use `\x01`/`\x02` control-character markers,
   not HTML — never render them with `v-html` (D019).
-- `GET /api/indexer/status` → `{ status, paused, filesIndexed, filesTotal, currentFile, error,
-  lastRun }`. Live snapshot of the background indexer's state from the in-memory
-  `indexerState` singleton.
+- `GET /api/indexer/status` → `{ status, phase, paused, filesIndexed, filesTotal, currentFile,
+  error, lastRun }`. Live snapshot of the background indexer's state from the in-memory
+  `indexerState` singleton. `phase` is `"shallow"`, `"deep"`, or `null`.
 - `POST /api/indexer/pause` ← `{ paused: boolean }` → `{ status, paused }`. Toggles the
   indexer's pause gate (D021).
 

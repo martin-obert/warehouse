@@ -4,6 +4,7 @@ export const indexerState = {
   paused: false,
   gate: Promise.resolve(),
   status: 'idle' as 'idle' | 'running' | 'paused' | 'finished' | 'error',
+  phase: null as 'shallow' | 'deep' | null,
   filesIndexed: 0,
   filesTotal: 0,
   currentFile: null as string | null,

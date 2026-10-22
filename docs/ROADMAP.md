@@ -62,6 +62,26 @@ snippet highlighting.
 - [x] Snippet markers switched from literal `<mark>`/`</mark>` HTML to control-character
       delimiters, parsed and rendered client-side without `v-html` — see D019.
 
+## Phase 3.5 — RAM optimization & two-phase indexing (shipped)
+
+Goal: reduce peak RAM consumption so the indexer runs reliably on a Raspberry Pi 2 (1GB RAM)
+without swap thrashing or OOM kills, and make the UI responsive during indexing.
+
+- [x] `sharp.cache(false)` + `sharp.concurrency(1)` at startup — D023.
+- [x] Sequential deep-mode image stats/perceptual hash (was parallel `Promise.all`) — D023.
+- [x] Thumbnail generation bundled into `extractImage()` (`withThumbnail: true`) — eliminates
+      redundant decode; `server/utils/thumbnail.ts` is now dead code — D023.
+- [x] `extractFileMetadata()` returns `FileMetadataResult { metadata, thumbnail }` — D023.
+- [x] Indexer concurrency configurable via `NUXT_INDEXER_CONCURRENCY` (default 1) — D023.
+- [x] Dockerfile: `--max-old-space-size=384 --expose-gc` — D023.
+- [x] Heap pressure backpressure: GC + 50ms pause when `heapUsed > 256MB` — D023.
+- [x] `maxPdfBytes` default 256→64MB; ffprobe `maxBuffer` 64→8MB — D023.
+- [x] Two-phase shallow/deep indexing — UI shows files after fast shallow pass; heavy deep pass
+      follows with per-file error resilience — D024.
+- [x] `indexerState.phase` exposed in status API and UI header — D024.
+- [ ] Worker-thread isolation for heavy extractors — deferred, see D025.
+- [ ] Stream-based PDF loading — blocked by pdf.js API, see D026.
+
 ## Phase 4 — Rich metadata & secondary features (future, additive)
 
 - Surface the deep metadata already extracted (EXIF/GPS/camera/lens, audio tags, PDF text, etc.)
