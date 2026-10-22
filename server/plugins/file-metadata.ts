@@ -1,4 +1,7 @@
+import sharp from 'sharp'
 import { shutdownExifTool } from '../lib/file-metadata'
+
+sharp.cache(false)
 
 /**
  * ExifTool runs as long-lived perl child processes (a warm process answers in ~10–30 ms instead of
