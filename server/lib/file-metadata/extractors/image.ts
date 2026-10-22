@@ -95,7 +95,8 @@ export async function extractImage(path: string, mime: string, deep: boolean): P
 
   if (deep) {
     // Decodes every pixel; libvips' default limitInputPixels still guards against decompression bombs.
-    const [stats, perceptualHash] = await Promise.all([sharp(input, { failOn: 'none' }).stats(), differenceHash(input)])
+    const stats = await sharp(input, { failOn: 'none' }).stats()
+    const perceptualHash = await differenceHash(input)
     info.stats = {
       isOpaque: stats.isOpaque,
       entropy: Math.round(stats.entropy * 1000) / 1000,
