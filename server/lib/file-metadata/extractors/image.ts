@@ -3,6 +3,17 @@ import sharp, { type FormatEnum } from 'sharp'
 import type { ImageInfo } from '../types'
 import { SkipExtractor } from '../util'
 
+export interface ImageThumbnail {
+  data: Buffer
+  width: number
+  height: number
+}
+
+export interface ImageResult {
+  info: ImageInfo
+  thumbnail: ImageThumbnail | null
+}
+
 // MIME → libvips loader. Support depends on how libvips was built (sharp's prebuilt binaries
 // lack JPEG 2000, JPEG XL, camera RAW, PDF…), so availability is checked at runtime.
 const LOADERS: Record<string, keyof FormatEnum> = {
@@ -47,7 +58,7 @@ async function differenceHash(input: string | Buffer): Promise<string> {
   return bits.replace(/[01]{4}/g, (nibble) => parseInt(nibble, 2).toString(16))
 }
 
-export async function extractImage(path: string, mime: string, deep: boolean): Promise<ImageInfo> {
+export async function extractImage(path: string, mime: string, deep: boolean, { withThumbnail = false } = {}): Promise<ImageResult> {
   if (mime === 'image/heic' || mime === 'image/heif') {
     throw new SkipExtractor("HEVC-coded HEIF isn't decodable by sharp's prebuilt libvips; ExifTool still reads its metadata")
   }
@@ -93,6 +104,18 @@ export async function extractImage(path: string, mime: string, deep: boolean): P
     },
   }
 
+  // Generate thumbnail while the image is still in libvips' working memory (one decode serves both).
+  let thumbnail: ImageThumbnail | null = null
+  if (withThumbnail) {
+    try {
+      const result = await sharp(input, { failOn: 'none' })
+        .resize({ width: 64, withoutEnlargement: true })
+        .webp({ quality: 50 })
+        .toBuffer({ resolveWithObject: true })
+      thumbnail = { data: result.data, width: result.info.width, height: result.info.height }
+    } catch { /* non-fatal — thumbnail is optional */ }
+  }
+
   if (deep) {
     // Decodes every pixel; libvips' default limitInputPixels still guards against decompression bombs.
     const stats = await sharp(input, { failOn: 'none' }).stats()
@@ -111,5 +134,5 @@ export async function extractImage(path: string, mime: string, deep: boolean): P
     }
     info.perceptualHash = perceptualHash
   }
-  return info
+  return { info, thumbnail }
 }
