@@ -1,6 +1,7 @@
 export default defineEventHandler(() => {
   return {
     status: indexerState.status,
+    phase: indexerState.phase,
     paused: indexerState.paused,
     filesIndexed: indexerState.filesIndexed,
     filesTotal: indexerState.filesTotal,

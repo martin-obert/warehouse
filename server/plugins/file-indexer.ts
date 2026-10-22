@@ -2,11 +2,13 @@ import {opendir, stat} from 'node:fs/promises'
 import {join, relative} from 'node:path'
 import {extractFileMetadata} from "#server/lib/file-metadata";
 import {isStoredMetadataFresh, saveFileMetadata, saveThumbnail} from "#server/utils/file-metadata-store.ts";
-import {generateThumbnail} from "#server/utils/thumbnail.ts";
 
 // Requires SQLite >= 3.45 (JSONB, concat_ws, contentless/external FTS5) — Node 22's node:sqlite qualifies.
 
 const SCHEMA_VERSION = 3
+
+// Heap usage threshold (bytes) above which the indexer pauses briefly to let GC reclaim.
+const HEAP_PRESSURE_BYTES = 256 * 1024 * 1024
 
 async function* walkDir(dir: string): AsyncGenerator<string> {
     const d = await opendir(dir)
@@ -20,6 +22,15 @@ async function* walkDir(dir: string): AsyncGenerator<string> {
     }
 }
 
+function resetProgress(phase: 'shallow' | 'deep') {
+    indexerState.status = 'running'
+    indexerState.phase = phase
+    indexerState.filesIndexed = 0
+    indexerState.filesTotal = 0
+    indexerState.currentFile = null
+    indexerState.error = null
+}
+
 export default defineNitroPlugin((nitroApp) => {
     async function run() {
         await createDatabase()
@@ -31,15 +42,13 @@ export default defineNitroPlugin((nitroApp) => {
         }
 
         if (forceReindex) console.log('NUXT_FORCE_REINDEX is set — skipping freshness checks, re-extracting all files.')
-        console.log(`Crawling ${contentRoot} for media files...`)
-
-        indexerState.status = 'running'
-        indexerState.filesIndexed = 0
-        indexerState.filesTotal = 0
-        indexerState.currentFile = null
-        indexerState.error = null
 
         try {
+            // Phase 1: shallow — fast, low-memory pass that gives the UI file listings immediately.
+            // Runs filesystem, contentType, exiftool (-fast), image (header-only), media, audio, pdf
+            // — all in their light/non-deep mode. No content hashing, no pixel stats, no thumbnails.
+            console.log(`[shallow] Crawling ${contentRoot}...`)
+            resetProgress('shallow')
 
             for await (const filePath of walkDir(contentRoot)) {
                 await indexerState.gate
@@ -50,21 +59,63 @@ export default defineNitroPlugin((nitroApp) => {
 
                 if (!forceReindex) {
                     const st = await stat(filePath, {bigint: true})
+                    if (await isStoredMetadataFresh(displayPath, st, {requireDeep: false})) continue
+                }
+
+                const { metadata } = await extractFileMetadata(
+                    {absolutePath: filePath, displayPath},
+                    {deep: false},
+                )
+                const fileId = await saveFileMetadata(metadata)
+                if (fileId) indexerState.filesIndexed++
+            }
+
+            console.log(`[shallow] Done — ${indexerState.filesIndexed} files indexed.`)
+
+            // Phase 2: deep — heavy extractors, thumbnails, content hashing, pixel stats.
+            // Re-walks the tree; the staleness check with requireDeep skips files that already
+            // have deep metadata. Per-file errors are caught so one bad file doesn't abort the pass.
+            console.log(`[deep] Starting deep extraction...`)
+            resetProgress('deep')
+
+            for await (const filePath of walkDir(contentRoot)) {
+                await indexerState.gate
+
+                // Back off when heap usage is high so GC can reclaim before the next extraction.
+                if (process.memoryUsage().heapUsed > HEAP_PRESSURE_BYTES) {
+                    global.gc?.()
+                    await new Promise((r) => setTimeout(r, 50))
+                }
+
+                indexerState.filesTotal++
+                const displayPath = relative(contentRoot, filePath).replaceAll('\\', '/')
+                indexerState.currentFile = displayPath
+
+                if (!forceReindex) {
+                    const st = await stat(filePath, {bigint: true})
                     if (await isStoredMetadataFresh(displayPath, st, {requireDeep: true})) continue
                 }
 
-                const fileMetadata = await extractFileMetadata({absolutePath: filePath, displayPath}, {deep: true})
-                console.log('Saving file ' + fileMetadata.path.display)
-                const fileId = await saveFileMetadata(fileMetadata)
-                indexerState.filesIndexed++
+                try {
+                    const { metadata, thumbnail } = await extractFileMetadata(
+                        {absolutePath: filePath, displayPath},
+                        {deep: true, withThumbnail: true},
+                    )
+                    const fileId = await saveFileMetadata(metadata)
+                    if (fileId) indexerState.filesIndexed++
 
-                if (fileId) {
-                    const thumb = await generateThumbnail(filePath, fileMetadata.contentType.mime)
-                    if (thumb) await saveThumbnail(fileId, thumb)
+                    if (fileId && thumbnail) {
+                        await saveThumbnail(fileId, thumbnail)
+                    }
+                } catch (err) {
+                    // Per-file resilience: log and continue instead of aborting the entire crawl.
+                    console.error(`[deep] Skipping ${displayPath}:`, err instanceof Error ? err.message : err)
                 }
             }
-            console.log(`Indexing finished successfully.`)
+
+            console.log(`[deep] Done — ${indexerState.filesIndexed} files deep-extracted.`)
             indexerState.status = 'finished'
+            indexerState.phase = null
             indexerState.currentFile = null
             indexerState.lastRun = new Date()
 

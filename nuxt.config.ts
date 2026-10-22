@@ -16,5 +16,6 @@ export default defineNuxtConfig({
     runtimeConfig: {
         contentRoot: '',
         forceReindex: false,
+        indexerConcurrency: 1,
     }
 })

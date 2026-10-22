@@ -43,6 +43,17 @@ export * from './types'
 export { PathAccessError, resolveInsideRoot } from './safe-path'
 export { shutdownExifTool } from './extractors/exiftool'
 
+export interface ExtractionThumbnail {
+  data: Buffer
+  width: number
+  height: number
+}
+
+export interface FileMetadataResult {
+  metadata: FileMetadata
+  thumbnail: ExtractionThumbnail | null
+}
+
 export class NotAFileError extends Error {
   override name = 'NotAFileError'
 }
@@ -96,9 +107,10 @@ function resolveOptions(options: ExtractOptions) {
     deep,
     hashes: (options.hashes?.length ? [...new Set(options.hashes)] : ['sha256']) as HashAlgorithm[],
     maxFullReadBytes: options.maxFullReadBytes ?? 4 * GiB,
-    maxPdfBytes: options.maxPdfBytes ?? 256 * MiB,
+    maxPdfBytes: options.maxPdfBytes ?? 64 * MiB,
     timeoutMs: options.timeoutMs ?? (deep ? 120_000 : 20_000),
     ffprobePath: options.ffprobePath ?? config.ffprobePath,
+    withThumbnail: options.withThumbnail ?? false,
   }
 }
 
@@ -126,7 +138,7 @@ async function toTarget(input: string | FileTarget): Promise<FileTarget> {
  * throw — see `extraction.extractors` for each layer's status. It throws only when the file can't
  * be stat'ed (ENOENT, EACCES…) or isn't a regular file (NotAFileError).
  */
-export async function extractFileMetadata(input: string | FileTarget, options: ExtractOptions = {}): Promise<FileMetadata> {
+export async function extractFileMetadata(input: string | FileTarget, options: ExtractOptions = {}): Promise<FileMetadataResult> {
   await acquireSlot()
   try {
     return await extract(await toTarget(input), resolveOptions(options))
@@ -135,7 +147,7 @@ export async function extractFileMetadata(input: string | FileTarget, options: E
   }
 }
 
-async function extract(target: FileTarget, options: ResolvedOptions): Promise<FileMetadata> {
+async function extract(target: FileTarget, options: ResolvedOptions): Promise<FileMetadataResult> {
   const path = target.absolutePath
   const display = target.displayPath ?? basename(target.requestedPath ?? path)
   const extractors: FileMetadata['extraction']['extractors'] = {}
@@ -189,7 +201,7 @@ async function extract(target: FileTarget, options: ResolvedOptions): Promise<Fi
   const nonEmpty = size > 0 || 'empty file'
 
   // Phase 2 — independent extractors in parallel. Heavy dependencies load lazily on first use.
-  const [content, embedded, image, media, audio, pdf] = await Promise.all([
+  const [content, embedded, imageResult, media, audio, pdf] = await Promise.all([
     run(
       'contentScan',
       !options.deep ? 'deep mode only' : size > options.maxFullReadBytes ? `larger than maxFullReadBytes (${humanBytes(options.maxFullReadBytes)})` : true,
@@ -197,7 +209,7 @@ async function extract(target: FileTarget, options: ResolvedOptions): Promise<Fi
     ),
     run('exiftool', nonEmpty, () => extractEmbedded(path, options.deep)),
     run('image', mime.startsWith('image/') ? nonEmpty : 'not an image', async () =>
-      (await import('./extractors/image')).extractImage(path, mime, options.deep),
+      (await import('./extractors/image')).extractImage(path, mime, options.deep, { withThumbnail: options.withThumbnail }),
     ),
     run('media', /^(audio|video)\//.test(mime) ? nonEmpty : 'not audio/video', (signal) =>
       extractMedia(path, { ffprobePath: options.ffprobePath, deep: options.deep, signal, timeoutMs: options.timeoutMs }),
@@ -224,6 +236,8 @@ async function extract(target: FileTarget, options: ResolvedOptions): Promise<Fi
     hidden: base.startsWith('.'),
   }
 
+  const image = imageResult?.info
+  const thumbnail = imageResult?.thumbnail ?? null
   const sections = { path: pathInfo, filesystem, contentType, content, embedded, image, media, audio, pdf }
   const result: FileMetadata = {
     path: pathInfo,
@@ -250,5 +264,5 @@ async function extract(target: FileTarget, options: ResolvedOptions): Promise<Fi
   const escaped = (text: string) => JSON.stringify(text).slice(1, -1)
   const serverPaths = [...new Set([path, target.requestedPath ?? path])].sort((a, b) => b.length - a.length)
   for (const serverPath of serverPaths) json = json.split(escaped(serverPath)).join(escaped(display))
-  return JSON.parse(json) as FileMetadata
+  return { metadata: JSON.parse(json) as FileMetadata, thumbnail }
 }

@@ -20,4 +20,4 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", ".output/server/index.mjs"]
+CMD ["node", "--max-old-space-size=384", "--expose-gc", ".output/server/index.mjs"]

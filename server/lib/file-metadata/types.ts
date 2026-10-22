@@ -42,6 +42,8 @@ export interface ExtractOptions {
   timeoutMs?: number
   /** ffprobe binary for this call. Default: configureFileMetadata({ ffprobePath }), else "ffprobe" from PATH. */
   ffprobePath?: string
+  /** Generate a 64px WebP thumbnail during image extraction (avoids a redundant decode). Default: false. */
+  withThumbnail?: boolean
 }
 
 export type ExtractorName =

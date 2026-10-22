@@ -69,7 +69,7 @@ export async function extractMedia(
     ;({ stdout } = await execFileAsync(options.ffprobePath, args, {
       signal: options.signal,
       timeout: options.timeoutMs,
-      maxBuffer: 64 * 1024 * 1024,
+      maxBuffer: 8 * 1024 * 1024,
       windowsHide: true,
     }))
   } catch (error) {
